@@ -1,0 +1,3571 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIPS アセンブラ / シミュレータ</title>
+<meta name="description" content="ブラウザで動く MIPS アセンブラ / シミュレータ。アセンブリを機械語（16進）に変換し、逐次実行と 5 段パイプライン（フォワーディング・ストール・遅延分岐）をクロックごとに確認できます。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="MIPS アセンブラ / シミュレータ">
+<meta property="og:description" content="アセンブリを機械語に変換し、5 段パイプラインの動きをパイプライン図で確認できる MIPS シミュレータ。インストール不要でブラウザだけで動きます。">
+<meta property="og:url" content="https://quwon-000.github.io/MIPS-pipeline-simulator/">
+<meta property="og:image" content="https://quwon-000.github.io/MIPS-pipeline-simulator/images/screenshot-pipeline.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232f6fde'/%3E%3Ctext x='16' y='20.5' font-family='monospace' font-size='10.5' font-weight='700' fill='white' text-anchor='middle'%3EMIPS%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #dfe2e7;
+    --text: #1d2330;
+    --muted: #6b7383;
+    --accent: #2f6fde;
+    --accent-ink: #ffffff;
+    --row-hover: #eef3fd;
+    --err: #d13b3b;
+    --err-bg: #fdecec;
+    --warn: #b7791f;
+    --warn-bg: #fdf6e7;
+    --ok: #23864f;
+    --fmt-r: #2f6fde;
+    --fmt-i: #23864f;
+    --fmt-j: #b35c00;
+    --f-op: #7a4fd6;
+    --f-rs: #2f6fde;
+    --f-rt: #0f8a8a;
+    --f-rd: #c2410c;
+    --f-sh: #a16207;
+    --f-fn: #be185d;
+    --f-imm: #23864f;
+    --f-tgt: #b35c00;
+    --cur-bg: #dde8fc;
+    --ctl-bg: #eceff3;   /* 操作部品の地（エディタの白と区別する） */
+    --mono: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15181e;
+      --panel: #1d2129;
+      --border: #313744;
+      --text: #e3e6ec;
+      --muted: #8d95a5;
+      --accent: #5b8ff0;
+      --row-hover: #252c3a;
+      --err: #f07070;
+      --err-bg: #3a2024;
+      --warn: #e0a84a;
+      --warn-bg: #362b1a;
+      --ok: #4fc483;
+      --fmt-r: #6c9cf3;
+      --fmt-i: #4fc483;
+      --fmt-j: #f0a050;
+      --f-op: #a98bf0;
+      --f-rs: #6c9cf3;
+      --f-rt: #3cc6c6;
+      --f-rd: #f08a5d;
+      --f-sh: #e0b84a;
+      --f-fn: #f07ab0;
+      --f-imm: #4fc483;
+      --f-tgt: #f0a050;
+      --cur-bg: #213358;
+      --ctl-bg: #161a20;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  button, select {
+    font: inherit; font-size: 13px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  button:hover:not(:disabled), select:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  kbd { font-family: var(--mono); font-size: 10px; opacity: .75; }
+  code { font-family: var(--mono); }
+  label.field { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .addr-input {
+    display: inline-flex; align-items: center;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+    font-family: var(--mono);
+  }
+  .addr-input span { padding: 0 2px 0 8px; color: var(--muted); }
+  .addr-input input {
+    border: 0; background: transparent; color: var(--text);
+    font: inherit; width: 10ch; padding: 5px 8px 5px 0; outline: none; text-transform: uppercase;
+  }
+  .addr-input.invalid { border-color: var(--err); }
+
+  /* ===== 左列の見出し・ツール行 ===== */
+  .app-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex: none; }
+  .app-head h1 { font-size: 14px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .spacer { flex: 1; }
+  .tool-row {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: none;
+    padding: 7px 12px; border-bottom: 1px solid var(--border); background: var(--ctl-bg);
+  }
+
+  /* ===== 入力補助 ===== */
+  /* 操作部品（グレーの地）とエディタ（白）を区別する */
+  .builder { flex: none; background: var(--ctl-bg); border-bottom: 1px solid var(--border); }
+  .b-head { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 6px 12px; font-weight: 700; color: var(--accent); }
+  .b-head:hover { background: var(--row-hover); }
+  .b-body { display: flex; flex-direction: column; gap: 6px; padding: 2px 12px 8px; }
+  .b-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 8px; }
+  .bf { display: inline-flex; flex-direction: column; gap: 1px; }
+  .bf > span:first-child { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .02em; white-space: nowrap; }
+  .b-in, .b-op, .bf select, .bf input {
+    font-family: var(--mono); font-size: 13px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel); color: var(--text);
+  }
+  .b-in:focus, .b-op:focus, .bf select:focus, .bf input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--row-hover); }
+  .b-op { font-weight: 700; min-width: 13em; }
+  .fmt-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .fmt-seg button { border: 0; border-radius: 0; padding: 4px 10px; font-weight: 700; font-size: 12px; color: var(--muted); background: var(--panel); }
+  .fmt-seg button + button { border-left: 1px solid var(--border); }
+  .fmt-seg button.on { background: var(--bg); box-shadow: inset 0 -2px 0 currentColor; }
+  .fmt-seg button.on[data-f="R"] { color: var(--fmt-r); }
+  .fmt-seg button.on[data-f="I"] { color: var(--fmt-i); }
+  .fmt-seg button.on[data-f="J"] { color: var(--fmt-j); }
+  .fmt-seg button.on[data-f="P"] { color: var(--text); }
+  .bf select.reg-sel { font-weight: 700; min-width: 5.5ch; }
+  .bf .mem { display: inline-flex; align-items: center; gap: 2px; font-family: var(--mono); }
+  .b-info { align-self: center; padding-top: 12px; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+  .b-desc { font-size: 12px; color: var(--muted); }
+  .badge.P { color: var(--muted); }
+  .b-prev { align-items: center; font-family: var(--mono); font-size: 13px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; min-height: 28px; gap: 4px 10px; }
+  .b-prev code { font-weight: 600; white-space: pre; }
+  .b-prev .hex { font-weight: 700; color: var(--ok); }
+  .b-prev .err { color: var(--err); font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; font-size: 12px; }
+  .b-pos { font-size: 11px; color: var(--muted); margin-top: -2px; }
+  .b-row button { padding: 4px 10px; }
+
+  /* ===== 実行パネル ===== */
+  .ctrl { flex: none; padding: 9px 12px 7px; gap: 8px; }
+  /* 設定のポップオーバーをはみ出して表示するため、.panel の overflow: hidden を打ち消す */
+  .panel.ctrl { overflow: visible; position: relative; z-index: 5; }
+  /* 設定のポップオーバー */
+  .opts { position: relative; flex: none; }
+  .opts > summary {
+    list-style: none; cursor: pointer; user-select: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text);
+  }
+  .opts > summary::-webkit-details-marker { display: none; }
+  .opts > summary:hover, .opts[open] > summary { border-color: var(--accent); }
+  .opts[open] > summary { color: var(--accent); }
+  .opts-sum { font-size: 11px; font-weight: 700; color: var(--warn); }
+  .opts-pop {
+    position: absolute; right: 0; top: calc(100% + 6px); width: 270px; padding: 10px 12px 12px;
+    display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  }
+  .opts-h { font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+  .opts-h small { font-weight: 400; }
+  .opt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; padding-left: 4px; }
+  .opt-row small { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  .opt-row select, .opt-row input[type=number] { min-width: 7.5em; }
+  .ctrl .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .ctrl .grp { display: inline-flex; align-items: center; gap: 6px; }
+  .ctrl .grp button { padding: 4px 11px; font-weight: 600; }
+  .ctrl .sep { width: 1px; height: 26px; background: var(--border); }
+  .ctrl select, .ctrl input[type=number] {
+    font-size: 12px; padding: 3px 5px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--panel); color: var(--text);
+  }
+  .ctrl input[type=number] { width: 5.5em; font-family: var(--mono); }
+  /* 実行方式（逐次 / パイプライン） */
+  .mode-seg button { font-size: 13px; padding: 5px 12px; }
+  .mode-seg button.on { color: var(--accent); }
+  /* 実行中は「■ 停止」を目立たせる */
+  #simRun.on { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+
+  /* クロック / PC（補助的な状態表示なので控えめに） */
+  .seg { display: inline-flex; align-items: baseline; gap: 6px; padding: 0 4px; font-family: var(--mono); font-size: 13px; color: var(--text); }
+  .seg .k { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--muted); font-family: system-ui, sans-serif; }
+  .board-msg { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 14px; }
+  .board-msg .halt { color: var(--ok); font-weight: 700; }
+  .board-msg .halt.error { color: var(--err); }
+  .board-msg .note { color: var(--warn); font-weight: 700; }
+  .board-msg b { color: var(--text); font-family: var(--mono); }
+
+  /* 右列が狭いときは操作部の補足表示を省く（説明はツールチップ） */
+  @container rc (max-width: 900px) {
+    .ctrl .row { gap: 8px 9px; }
+  }
+  @container rc (max-width: 760px) {
+    .ctrl .sep, .opts-sum { display: none; }
+    .mode-seg button, .ctrl .grp button { padding: 4px 8px; }
+  }
+
+  /* ===== メイン 2 カラム ===== */
+  main {
+    flex: 1; min-height: 0;
+    display: grid; grid-template-columns: minmax(360px, var(--lw, 46%)) 12px minmax(560px, 1fr); gap: 0;
+    padding: 12px 14px;
+  }
+  .right-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; container: rc / inline-size; }
+  /* 左右パネルの境界（ドラッグで幅を変更） */
+  .splitter { cursor: col-resize; position: relative; }
+  .splitter::after { content: ""; position: absolute; top: 40%; bottom: 40%; left: 5px; width: 2px; border-radius: 1px; background: var(--border); }
+  .splitter:hover::after, .splitter.drag::after { top: 0; bottom: 0; background: var(--accent); }
+  body.resizing { cursor: col-resize; user-select: none; }
+  .right-col > .right { flex: 1; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px;
+    padding: 7px 12px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px; flex: none;
+  }
+  .panel-head .sub { font-weight: 400; color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .panel-head button { padding: 2px 9px; font-size: 12px; }
+
+  /* 左: エディタ */
+  .editor { display: flex; flex: 1; min-height: 0; font-family: var(--mono); font-size: 14px; line-height: 21px; }
+  .gutter {
+    flex: none; width: 3.6em; padding: 10px 0; overflow: hidden; text-align: right; color: var(--muted);
+    background: var(--bg); border-right: 1px solid var(--border); user-select: none;
+  }
+  .gutter div { padding-right: 8px; height: 21px; white-space: nowrap; }
+  .gutter div.err { color: #fff; background: var(--err); }
+  .gutter div.warn { color: #fff; background: var(--warn); }
+  .gutter div.hl { background: var(--accent); color: var(--accent-ink); }
+  .gutter div.cur { background: var(--cur-bg); box-shadow: inset -3px 0 0 var(--accent); color: var(--accent); font-weight: 700; }
+  textarea#src {
+    flex: 1; resize: none; border: 0; outline: none; margin: 0; padding: 10px 12px;
+    background: transparent; color: var(--text); font: inherit; line-height: inherit;
+    white-space: pre; overflow: auto; tab-size: 8;
+  }
+  .msgs-box { flex: none; border-top: 1px solid var(--border); max-height: 26%; display: flex; flex-direction: column; min-height: 0; }
+  .msgs-box .panel-head { border-bottom: 0; padding: 5px 12px; }
+  ul.msgs { list-style: none; margin: 0; padding: 0 0 4px; overflow: auto; }
+  ul.msgs li { padding: 3px 12px; cursor: pointer; font-size: 12px; display: flex; gap: 10px; }
+  ul.msgs li:hover { background: var(--row-hover); }
+  ul.msgs li .ln { font-family: var(--mono); font-weight: 700; flex: none; }
+  ul.msgs li.err .ln { color: var(--err); }
+  ul.msgs li.warn .ln { color: var(--warn); }
+  ul.msgs li.none { color: var(--muted); cursor: default; }
+  ul.msgs li.none:hover { background: none; }
+  .status { display: inline-flex; gap: 10px; font-size: 12px; color: var(--muted); font-weight: 400; }
+  .status .e { color: var(--err); font-weight: 600; }
+  .status .w { color: var(--warn); font-weight: 600; }
+  .status .ok { color: var(--ok); font-weight: 600; }
+
+  /* 右: タブ */
+  .tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); flex: none; overflow-x: auto; }
+  .tabs button {
+    border: 1px solid transparent; border-bottom: 0; border-radius: 7px 7px 0 0; background: transparent;
+    padding: 6px 14px; color: var(--muted); font-weight: 600; white-space: nowrap; margin-bottom: -1px;
+  }
+  .tabs button:hover:not(:disabled) { color: var(--text); border-color: transparent; }
+  .tabs button.on { background: var(--panel); color: var(--accent); border-color: var(--border); }
+  .tabs button .cnt { display: inline-block; min-width: 1.5em; margin-left: 4px; padding: 0 5px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 11px; }
+  .tabs button kbd { margin-left: 4px; }
+  .pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .pane-body { flex: 1; min-height: 0; overflow: auto; }
+  .sim-off { padding: 40px 20px; text-align: center; color: var(--muted); }
+  .right:not(.no-sim) .pane > .sim-off { display: none; }
+  .right.no-sim .pane > .sim-on { display: none; }
+
+  /* 機械語テーブル */
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .code-table thead th {
+    position: sticky; top: 0; z-index: 1; background: var(--panel); text-align: left; font-weight: 600; color: var(--muted);
+    padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  .code-table tbody td { padding: 5px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+  tbody tr.word { cursor: pointer; }
+  tbody tr.word:hover { background: var(--row-hover); }
+  tbody tr.word.cur, tbody tr.word.cur:hover { background: var(--cur-bg); box-shadow: inset 4px 0 0 var(--accent); }
+  tbody tr.word.cur td.asm { font-weight: 700; color: var(--accent); }
+  td.addr { font-family: var(--mono); color: var(--muted); }
+  td.hex { font-family: var(--mono); font-size: 16px; font-weight: 700; letter-spacing: .03em; color: var(--text); }
+  td.asm { font-family: var(--mono); }
+  td.note { color: var(--muted); font-size: 12px; }
+  tr.group td { padding: 6px 10px 2px; border-bottom: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  tr.data-head td { padding: 12px 10px 4px; font-weight: 700; font-size: 12px; color: var(--muted); background: var(--bg); }
+  tr.data td.asm { color: var(--muted); }
+  tr.in-group td.asm::before { content: "↳ "; color: var(--muted); }
+  td.mk { width: 1%; padding: 5px 4px 5px 8px; cursor: pointer; white-space: nowrap; }
+  td.mk .bp { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px dashed var(--border); vertical-align: middle; }
+  td.mk .bp.on { background: var(--err); border: 1px solid var(--err); }
+  td.mk .st { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 3px; padding: 0 3px; margin-left: 3px; background: var(--accent); color: var(--accent-ink); }
+  .badge { display: inline-block; min-width: 1.8em; text-align: center; font-weight: 700; font-size: 11px; border-radius: 4px; padding: 1px 5px; border: 1px solid currentColor; }
+  .badge.R { color: var(--fmt-r); } .badge.I { color: var(--fmt-i); } .badge.J { color: var(--fmt-j); }
+  .badge.pseudo { color: var(--muted); font-weight: 600; margin-left: 6px; }
+  .label-chip { display: inline-block; font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); margin-right: 6px; }
+  .fields { display: inline-flex; gap: 3px; font-family: var(--mono); opacity: .6; transition: opacity .1s; }
+  tr.word:hover .fields, tr.word.cur .fields { opacity: 1; }
+  .fields .f { display: inline-flex; flex-direction: column; align-items: center; }
+  .fields .f b { font-weight: 500; font-size: 12px; letter-spacing: .03em; }
+  .fields .f i { font-style: normal; font-size: 10px; opacity: .85; line-height: 1.2; }
+  .f.op { color: var(--f-op); } .f.rs { color: var(--f-rs); } .f.rt { color: var(--f-rt); }
+  .f.rd { color: var(--f-rd); } .f.shamt { color: var(--f-sh); } .f.funct { color: var(--f-fn); }
+  .f.immediate, .f.offset { color: var(--f-imm); } .f.target { color: var(--f-tgt); }
+  .empty { padding: 40px 20px; text-align: center; color: var(--muted); }
+
+  /* 操作行（表示の切り替え・値の書き換え） */
+  .op-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg); flex: none; }
+  .op-row .grp { display: inline-flex; align-items: center; gap: 5px; }
+  .op-row .k { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+  .op-row input.val {
+    font-family: var(--mono); font-size: 13px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel); color: var(--text); width: 11ch; text-transform: uppercase;
+  }
+  .op-row button { padding: 3px 10px; font-weight: 600; }
+
+  /* レジスタ */
+  .regs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px; padding: 10px 12px; }
+  .reg { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 5px; font-family: var(--mono); font-size: 13px; border: 1px solid transparent; }
+  .reg .rn { min-width: 3.6ch; font-weight: 700; color: var(--text); }
+  .reg .ra { width: 3ch; color: var(--muted); font-size: 10px; opacity: .8; }
+  .reg input { width: 100%; min-width: 0; font: inherit; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 1px 4px; }
+  .reg input:not([readonly]) { border-color: var(--border); background: var(--bg); }
+  .reg input:not([readonly]):focus { border-color: var(--accent); outline: none; }
+  .reg.changed { background: var(--warn-bg); border-color: var(--warn); }
+  .reg.changed input { color: var(--warn); font-weight: 700; }
+  .reg.zero input { color: var(--muted); }
+
+  /* メモリ */
+  .mem-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0; flex: 1; min-height: 0; }
+  .mem-grid > div { min-height: 0; overflow: auto; }
+  .mem-grid > div + div { border-left: 1px solid var(--border); }
+  .mem-sec { padding: 8px 12px; border-top: 1px solid var(--border); }
+  .mem-sec:first-child { border-top: 0; }
+  .mem-sec h4 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  textarea#memInit {
+    width: 100%; height: 90px; resize: vertical; font-family: var(--mono); font-size: 13px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+  }
+  .mem-err { color: var(--err); font-size: 12px; margin-top: 4px; }
+  table.mem { font-family: var(--mono); font-size: 13px; width: 100%; }
+  table.mem th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); font-family: inherit; font-size: 12px; }
+  table.mem td { padding: 3px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.mem td.a { color: var(--muted); }
+  table.mem td.v { padding-top: 1px; padding-bottom: 1px; }
+  td.v .px { color: var(--muted); margin-right: 1px; }
+  table.mem td.d, table.mem th.d { text-align: right; color: var(--muted); }
+  input.mv { font: inherit; width: 10ch; padding: 1px 4px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 4px; text-transform: uppercase; }
+  input.mv:not([readonly]) { border-color: var(--border); background: var(--bg); cursor: text; }
+  input.mv:not([readonly]):focus { outline: none; border-color: var(--accent); background: var(--panel); }
+  input.mv[readonly] { cursor: pointer; }
+  table.mem tr.changed input.mv { color: var(--warn); font-weight: 700; }
+  table.mem td.x { color: var(--muted); }
+  table.mem tr.adr td { background: var(--row-hover); }
+  table.mem tr.adr td.a { color: var(--accent); font-weight: 700; }
+  table.mem tr.changed td { background: var(--warn-bg); }
+  table.mem tr.changed td.v { color: var(--warn); font-weight: 700; }
+  table.mem tr.pc td.x { color: var(--accent); font-weight: 600; }
+  table.mem tbody tr { cursor: pointer; }
+
+  /* パイプライン */
+  .pipe-stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 10px 12px; }
+  .stage { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 0; background: var(--bg); }
+  .stage .sn { font-weight: 700; font-size: 12px; color: var(--accent); }
+  .stage .si { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; margin-top: 2px; }
+  .stage.empty .si { color: var(--muted); }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 3px; padding: 0 4px; margin: 3px 3px 0 0; background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); }
+  .tag.fwd { background: transparent; color: var(--ok); border-color: var(--ok); }
+  .sec-title { padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--muted); border-top: 1px solid var(--border); }
+  .iregs { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 2px 10px; padding: 4px 12px 10px; font-family: var(--mono); font-size: 13px; }
+  .iregs div { display: flex; gap: 6px; padding: 1px 4px; border-radius: 4px; }
+  .iregs .nm { color: var(--accent); width: 14ch; flex: none; }
+  .iregs .changed { background: var(--warn-bg); }
+  .iregs .changed span:last-child { color: var(--warn); font-weight: 700; }
+  .assume { padding: 0 12px 10px; font-size: 11px; color: var(--muted); }
+
+  /* 履歴（値の変化） */
+  table.obs { font-family: var(--mono); font-size: 12px; width: auto; }
+  table.obs th, table.obs td { padding: 3px 8px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  table.obs th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; }
+  table.obs th:first-child, table.obs td:first-child { position: sticky; left: 0; background: var(--panel); text-align: left; color: var(--accent); font-weight: 600; z-index: 1; }
+  table.obs th:first-child { z-index: 2; }
+  table.obs td.diff { color: var(--warn); font-weight: 700; }
+  table.obs td.last { background: var(--row-hover); }
+
+  /* パイプライン図（行 = 命令、列 = クロック） */
+  table.pd { font-family: var(--mono); font-size: 12px; width: auto; }
+  table.pd th, table.pd td { padding: 2px 3px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; }
+  table.pd thead th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; z-index: 1; min-width: 3.4em; }
+  table.pd .ins { position: sticky; left: 0; background: var(--panel); text-align: left; padding: 2px 14px 2px 10px; z-index: 2; }
+  table.pd thead th.ins { z-index: 3; }
+  table.pd .ins .a { color: var(--muted); margin-right: 8px; }
+  table.pd tr.flushed .ins { color: var(--muted); text-decoration: line-through; }
+  table.pd th.now, table.pd td.now { background: var(--row-hover); }
+  .pd-c { display: inline-block; min-width: 3.1em; padding: 1px 3px; border-radius: 4px; font-weight: 700; line-height: 1.25; }
+  .pd-c small { display: block; font-size: 9px; font-weight: 600; opacity: .9; }
+  .st-if { background: color-mix(in srgb, var(--f-rs) 16%, transparent); color: var(--f-rs); }
+  .st-id { background: color-mix(in srgb, var(--f-rt) 16%, transparent); color: var(--f-rt); }
+  .st-ex { background: color-mix(in srgb, var(--f-rd) 16%, transparent); color: var(--f-rd); }
+  .st-mem { background: color-mix(in srgb, var(--f-op) 16%, transparent); color: var(--f-op); }
+  .st-wb { background: color-mix(in srgb, var(--f-fn) 16%, transparent); color: var(--f-fn); }
+  .st-stall { background: var(--warn-bg); color: var(--warn); outline: 1px dashed var(--warn); outline-offset: -1px; }
+  .st-flush { color: var(--muted); }
+  .pd-key { display: inline-block; padding: 0 4px; border-radius: 3px; font-family: var(--mono); font-weight: 700; font-size: 11px; }
+  .pd-note { padding: 6px 12px; font-size: 12px; color: var(--muted); }
+  pre.help-ex { margin: 6px 0 10px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: var(--mono); font-size: 12px; overflow-x: auto; }
+
+  /* ログ */
+  ul.log { list-style: none; margin: 0; padding: 4px 0; font-size: 13px; }
+  ul.log li { padding: 3px 12px; display: flex; gap: 10px; }
+  ul.log li .c { font-family: var(--mono); color: var(--muted); flex: none; width: 6ch; }
+  ul.log li.warn { color: var(--warn); }
+  ul.log li.err { color: var(--err); }
+  ul.log li.none, ul.log li.info { color: var(--muted); }
+  pre.console { margin: 0; padding: 10px 12px; font-family: var(--mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  pre.console:empty::before { content: '（出力はありません。SYSCALL で出力すると、ここに表示されます）'; color: var(--muted); font-family: system-ui, sans-serif; }
+  .tabs button .cnt.out { background: var(--accent); }
+
+  /* ヘルプ */
+  dialog#help { max-width: 760px; width: calc(100% - 32px); border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); padding: 0; }
+  dialog#help::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog#help .hd { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  dialog#help .bd { padding: 6px 16px 16px; font-size: 13px; max-height: 75vh; overflow: auto; }
+  dialog#help h3 { font-size: 14px; margin: 14px 0 6px; }
+  dialog#help table { width: auto; margin: 6px 0; }
+  dialog#help td, dialog#help th { padding: 3px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  dialog#help code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 6px;
+    font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10;
+  }
+  .toast.show { opacity: 1; }
+
+  /* 狭い画面ではページ全体をスクロール */
+  @media (max-width: 900px) {
+    body { overflow: auto; height: auto; }
+    main { grid-template-columns: 1fr; gap: 12px; }
+    .left { height: 60vh; }
+    .right-col { height: 90vh; }
+    .splitter { display: none; }
+    .mem-grid { grid-template-columns: 1fr; }
+    .mem-grid > div + div { border-left: 0; border-top: 1px solid var(--border); }
+    .pipe-stages { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<main>
+  <!-- 左: アセンブリ -->
+  <section class="panel left">
+    <div class="app-head">
+      <h1>MIPS アセンブラ / シミュレータ</h1>
+      <span class="spacer"></span>
+      <select id="sample" style="max-width:160px" title="サンプルプログラムを読み込む（初期値も設定されます）">
+        <option value="">サンプルを読み込む…</option>
+        <option value="sum">配列の総和</option>
+        <option value="fib">フィボナッチ数列の出力</option>
+        <option value="fact">再帰呼び出し（階乗）</option>
+        <option value="bsort">バブルソート</option>
+        <option value="hazard">パイプラインのハザード（P）</option>
+        <option value="pseudo">擬似命令の例</option>
+      </select>
+      <button id="btnHelp" title="ヘルプ：書き方と操作方法" style="padding:5px 10px;font-weight:700">?</button>
+    </div>
+    <div class="tool-row">
+      <div class="addr-input" id="startBox" title="プログラムを配置する先頭アドレス"><span>開始 0x</span><input id="start" value="00400000" maxlength="8" spellcheck="false"></div>
+      <button class="primary" id="btnAssemble" title="変換（Ctrl+Enter）">変換</button>
+      <label class="field"><input type="checkbox" id="auto" checked> 自動変換</label>
+      <span class="spacer"></span>
+      <button id="btnClear">クリア</button>
+    </div>
+    <!-- 入力補助：命令・レジスタを選んで 1 行ずつ追加 -->
+    <div class="builder" id="builder">
+      <button class="b-head" id="bToggle" title="クリックで開閉"><span id="bArrow">▾</span> 入力補助</button>
+      <div class="b-body" id="builderBody">
+      <div class="b-row">
+        <label class="bf"><span>ラベル（任意）</span><input id="bLabel" class="b-in" maxlength="24" spellcheck="false" placeholder="LOOP" style="width:8ch"></label>
+        <div class="bf"><span>① 形式</span><div class="fmt-seg" id="bFmtSeg"><button data-f="R" title="レジスタ同士の演算・シフト・乗除算・JR">R形式</button><button data-f="I" title="即値演算・メモリ転送・条件分岐">I形式</button><button data-f="J" title="J / JAL">J形式</button><button data-f="P" title="複数の命令に展開される便利な命令">擬似</button></div></div>
+        <label class="bf"><span>② 命令</span><select id="bOp" class="b-op"></select></label>
+        <span class="b-info"><span class="b-desc" id="bDesc"></span></span>
+      </div>
+      <div class="b-row" id="bFields"></div>
+      <div class="b-row b-prev" id="bPrev"><code id="bLine"></code><span id="bOut"></span></div>
+      <div class="b-row">
+        <input id="bComment" class="b-in" spellcheck="false" placeholder="# コメント（任意）" style="flex:1;min-width:7em">
+        <button id="bLoad" title="カーソルのある行の命令をここに読み込んで編集する">行を読込</button>
+        <button id="bReplace" title="カーソルのある行をこの命令で置き換える">置換</button>
+        <button id="bAdd" class="primary" title="カーソルのある行の次に追加（Enter）">追加 ⏎</button>
+      </div>
+      <div class="b-pos" id="bPos"></div>
+      <datalist id="bLabels"></datalist>
+      </div>
+    </div>
+    <div class="editor">
+      <div class="gutter" id="gutter"></div>
+      <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"
+        placeholder="1行に1命令。ラベルは「名前:」、コメントは「#」&#10;&#10;例:&#10;START: ADDI $8, $0, 1&#10;LOOP:  SLL  $8, $8, 1&#10;       BNE  $8, $0, LOOP&#10;       J    START"></textarea>
+    </div>
+    <div class="msgs-box">
+      <div class="panel-head">エラー・警告 <span class="status" id="status"></span></div>
+      <ul class="msgs" id="msgs"><li class="none">なし</li></ul>
+    </div>
+  </section>
+
+  <div class="splitter" id="splitter" title="ドラッグで左右の幅を変更（ダブルクリックで元に戻す）"></div>
+
+  <div class="right-col">
+  <!-- 実行パネル -->
+  <section class="panel ctrl" id="board">
+    <div class="row">
+      <div class="fmt-seg mode-seg" id="modeSeg" role="group" aria-label="実行方式" title="実行方式（切り替えるとリセットされます）">
+        <button data-mode="seq" title="逐次実行：1 ステップ = 1 命令">逐次</button><button data-mode="pipe" title="5 段パイプライン：1 ステップ = 1 クロック">パイプライン</button>
+      </div>
+      <span class="sep"></span>
+      <div class="grp">
+        <button id="simReset" title="リセット（F8）：レジスタ・メモリを初期値に、PC を開始アドレスに戻す">⟲ リセット</button>
+        <button id="simBack" title="1 ステップ戻る">◀</button>
+        <button class="primary" id="simStep" title="ステップ（F10）：逐次 = 1 命令 / パイプライン = 1 クロック実行">ステップ</button>
+        <button class="run" id="simRun" title="実行 / 停止（F9）">▶ 実行</button>
+      </div>
+      <div class="seg" title="クロック数（逐次では実行した命令数）と PC"><span class="k" id="clkKey">クロック</span><span id="dispClk">0</span><span class="k">PC</span><span id="dispPc">00400000</span></div>
+      <span class="spacer"></span>
+      <!-- 実行方式・実行速度の設定（ポップオーバー） -->
+      <details class="opts" id="opts">
+        <summary title="実行方式（遅延分岐・ロード直後の動作）と、実行（F9）の速度の設定"><span class="opts-sum" id="optSum"></span>⚙ 設定</summary>
+        <div class="opts-pop">
+          <div class="opts-h">実行方式 <small>（変更するとリセットされます）</small></div>
+          <label class="opt-row" title="分岐・ジャンプの直後の 1 命令（遅延スロット）を、分岐の成否にかかわらず実行する">
+            <span>遅延分岐</span><input type="checkbox" id="optDelaySlot">
+          </label>
+          <label class="opt-row" title="パイプライン：ロード命令の直後でその結果を使うときの動作">
+            <span>ロード直後<small id="optLoadUseNote">（パイプラインのみ）</small></span>
+            <select id="optLoadUse">
+              <option value="stall">ストール</option>
+              <option value="delay">遅延ロード</option>
+            </select>
+          </label>
+          <div class="opts-h">実行（F9）するとき</div>
+          <label class="opt-row"><span>速度</span>
+            <select id="simSpeed">
+              <option value="0">即時</option>
+              <option value="100">速い</option>
+              <option value="500">ゆっくり</option>
+            </select>
+          </label>
+          <label class="opt-row" title="1 回の実行で進める最大ステップ数"><span>最大ステップ数</span><input type="number" id="simMax" value="1000" min="1" max="100000"></label>
+        </div>
+      </details>
+    </div>
+    <div class="board-msg" id="boardMsg"></div>
+  </section>
+
+  <!-- 右: タブで画面を切り替え -->
+  <section class="panel right">
+    <nav class="tabs" id="tabs">
+      <button data-tab="code" title="Alt+1">機械語</button>
+      <button data-tab="regs" title="Alt+2">レジスタ</button>
+      <button data-tab="mem" title="Alt+3">メモリ</button>
+      <button data-tab="pipe" title="Alt+4">パイプライン</button>
+      <button data-tab="obs" title="Alt+5">履歴</button>
+      <button data-tab="out" title="Alt+6">出力<span class="cnt out" id="outCnt" hidden></span></button>
+      <button data-tab="log" title="Alt+7">ログ<span class="cnt" id="logCnt" hidden></span></button>
+    </nav>
+
+    <div class="pane" data-pane="code">
+      <div class="panel-head">
+        <span class="sub" style="margin-left:auto">
+          <label class="field"><input type="checkbox" id="split" checked> 4桁区切り</label>
+          <button id="btnCopyHex" disabled>16進をコピー</button>
+          <button id="btnCopyAddr" disabled>アドレス付きコピー</button>
+          <button id="btnSave" disabled>.txt で保存</button>
+        </span>
+      </div>
+      <div class="pane-body" id="resultWrap"><div class="empty">左にアセンブリを入力すると、ここに機械語が表示されます。</div></div>
+    </div>
+
+    <div class="pane" data-pane="regs" hidden>
+      <div class="sim-off">エラーを修正すると実行できます。</div>
+      <div class="sim-on pane" style="min-height:0">
+        <div class="op-row">
+          <label class="field"><input type="checkbox" id="regDec"> 10進表示</label>
+          <button id="regClear" title="$sp = 7FFFEFFC、$gp = 10008000、それ以外は 0">初期値を既定に戻す</button>
+        </div>
+        <div class="pane-body">
+          <div class="regs" id="regs"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="mem" hidden>
+      <div class="sim-off">エラーを修正すると実行できます。</div>
+      <div class="sim-on pane" style="min-height:0">
+        <div class="op-row">
+          <span class="grp"><span class="k">表示する番地 0x</span><input class="val" id="memAdr" maxlength="8" spellcheck="false" title="表示する番地（16進）。右の一覧の行をクリックしても移動できます"></span>
+          <label class="field"><input type="checkbox" id="memAsm"> アセンブリで表示</label>
+        </div>
+        <div class="mem-grid">
+          <div>
+            <table class="mem" id="memView"></table>
+          </div>
+          <div>
+            <div class="mem-sec">
+              <h4>追加の初期値（16進・連続した番地に格納。.data より優先）</h4>
+              <textarea id="memInit" spellcheck="false" placeholder="10010000: 1 2 4 3 0&#10;10010100: FFFFFFFF"></textarea>
+              <div class="mem-err" id="memErr"></div>
+            </div>
+            <div class="mem-sec">
+              <h4>値のあるデータ番地（クリックで表示）</h4>
+              <table class="mem" id="memData"></table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="pipe" hidden>
+      <div class="sim-off">エラーを修正すると実行できます。</div>
+      <div class="sim-on pane-body">
+        <div id="pipeOff" class="sim-off">パイプラインの様子は、実行方式を「パイプライン」にすると表示されます。<br><br><button id="toPipe">パイプラインに切り替える</button></div>
+        <div id="pipeOn">
+          <div class="pipe-stages" id="pipeStages"></div>
+          <div class="sec-title">内部レジスタ（パイプラインレジスタ）</div>
+          <div class="iregs" id="iregs"></div>
+          <div class="assume" id="pipeAssume"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="obs" hidden>
+      <div class="sim-off">エラーを修正すると実行できます。</div>
+      <div class="sim-on pane" style="min-height:0">
+        <div class="panel-head">
+          <span class="sub">
+            <span class="fmt-seg" id="obsView"><button data-v="diagram" title="命令ごとに、各クロックでどのステージにいたかを表示">パイプライン図</button><button data-v="values" title="レジスタ・メモリの値がクロックごとにどう変わったかを表示">値の変化</button></span>
+            <span id="obsSub"></span>
+          </span>
+          <span class="sub">
+            <label class="field" id="obsAllWrap"><input type="checkbox" id="obsAll"> パイプラインレジスタもすべて表示</label>
+            <button id="obsCopy">表をコピー（TSV）</button>
+          </span>
+        </div>
+        <div class="pane-body" id="obsWrap"></div>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="out" hidden>
+      <div class="sim-off">エラーを修正すると実行できます。</div>
+      <div class="sim-on pane-body"><pre class="console" id="simOut"></pre></div>
+    </div>
+
+    <div class="pane" data-pane="log" hidden>
+      <div class="sim-off">エラーを修正すると実行できます。</div>
+      <div class="sim-on pane-body"><ul class="log" id="simLog"></ul></div>
+    </div>
+  </section>
+  </div>
+</main>
+
+<dialog id="help">
+  <div class="hd">ヘルプ <button id="helpClose">閉じる</button></div>
+  <div class="bd">
+    <h3>操作</h3>
+    <table>
+      <tr><th>操作</th><th>動作</th><th>キー</th></tr>
+      <tr><td>逐次 / パイプライン</td><td>実行方式を切り替えます（切り替えるとリセット）。逐次は 1 ステップ = 1 命令、パイプラインは 1 ステップ = 1 クロックです</td><td></td></tr>
+      <tr><td>⟲ リセット</td><td>レジスタとメモリを初期値に戻し、PC を開始アドレスにします</td><td>F8</td></tr>
+      <tr><td>◀</td><td>1 ステップ（または 1 回の書き換え）戻ります</td><td></td></tr>
+      <tr><td>ステップ</td><td>1 命令（パイプラインでは 1 クロック）実行します</td><td>F10</td></tr>
+      <tr><td>▶ 実行 / ■ 停止</td><td>停止条件（終了・ブレークポイント・最大ステップ数）まで実行します</td><td>F9</td></tr>
+      <tr><td>⚙ 設定</td><td>遅延分岐・ロード直後の動作と、実行の速さ・最大ステップ数を設定します</td><td></td></tr>
+    </table>
+    <p><b>値の書き換え：</b>「レジスタ」「メモリ」画面で値をクリックして入力します（メモリは Enter で次の番地へ）。クロック 0 で書き換えると初期値として保存され、リセット後も残ります。実行の途中で書き換えると今の値だけが変わり、◀ で取り消せます。$sp と $gp の初期値は MARS / SPIM と同じ <code>7FFFEFFC</code> / <code>10008000</code> です。</p>
+    <p><b>機械語の画面：</b>行をクリックするとソースの該当行へ移動し、左端の ● をクリックするとブレークポイントを設定します。</p>
+    <p><b>画面の切り替え：</b>Alt+1 機械語 / Alt+2 レジスタ / Alt+3 メモリ / Alt+4 パイプライン / Alt+5 履歴 / Alt+6 出力 / Alt+7 ログ</p>
+    <p><b>履歴：</b>「パイプライン図」は命令ごとに各クロックのステージを示します（<span class="pd-key st-stall">ID ストール</span> はロード結果待ちの停止、<span class="pd-key st-flush">IF 破棄</span> は分岐成立で捨てた命令、<small>←EX</small> などはフォワーディング元のステージ）。「値の変化」はレジスタ・メモリの値をクロックごとに並べます。</p>
+
+    <h3>実行方式の設定</h3>
+    <table>
+      <tr><th>設定</th><th>動作</th></tr>
+      <tr><td>遅延分岐</td><td>オン：分岐・ジャンプの直後の 1 命令（遅延スロット）を常に実行し、JAL は $ra = PC+8。オフ（既定）：遅延スロットなし。パイプラインでは分岐成立時に、すでにフェッチした 1 命令をフラッシュし、JAL は $ra = PC+4</td></tr>
+      <tr><td>ロード直後: ストール（既定）</td><td>パイプラインで、ロードの結果を直後の命令が使うときは 1 クロック停止（バブルを挿入）してから受け取る</td></tr>
+      <tr><td>ロード直後: 遅延ロード</td><td>MIPS I と同じく停止せず、直後の命令は古い値を読む（ログに警告を出します）</td></tr>
+    </table>
+    <p>パイプラインは IF / ID / EX / MEM / WB の 5 段で、分岐は ID で判定し、EX・MEM・WB からのフォワーディングを行います。メモリはビッグエンディアンです。</p>
+    <p>ADD・ADDI・SUB で符号付きオーバーフローが起きると例外として停止します（結果は書き込まれません）。例外を起こさない ADDU・ADDIU・SUBU も使えます。</p>
+
+    <h3>入力補助（プルダウンで入力）</h3>
+    <p>エディタ上部の「▾ 入力補助」をクリックすると開閉します。① 形式（R / I / J / 擬似）を選び、② 命令を選ぶと必要なオペランドの欄が出るので、レジスタをプルダウンで選び、数値や飛び先を入力して「追加」（Enter）を押すと、エディタのカーソル行の次に 1 行追加されます。
+      「置換」でカーソル行を置き換え、「行を読込」でカーソル行の命令をパネルに読み込んで編集できます。飛び先の欄では、プログラム中のラベルを候補から選べます。Ctrl+Z で元に戻せます。</p>
+
+    <h3>命令</h3>
+    <table>
+      <tr><th>形式</th><th>命令</th><th>書式</th></tr>
+      <tr><td>R</td><td>ADD ADDU SUB SUBU AND OR XOR NOR SLT SLTU</td><td><code>ADD rd, rs, rt</code></td></tr>
+      <tr><td>R</td><td>SLL SRL SRA / SLLV SRLV SRAV</td><td><code>SLL rd, rt, shamt</code> <code>SLLV rd, rt, rs</code></td></tr>
+      <tr><td>R</td><td>MULT MULTU DIV DIVU / MFHI MFLO / MTHI MTLO</td><td><code>MULT rs, rt</code> <code>MFLO rd</code> <code>MTHI rs</code></td></tr>
+      <tr><td>R</td><td>JR JALR</td><td><code>JR rs</code> <code>JALR rs</code> <code>JALR rd, rs</code></td></tr>
+      <tr><td>R</td><td>SYSCALL BREAK</td><td><code>SYSCALL</code> <code>BREAK</code></td></tr>
+      <tr><td>I</td><td>ADDI ADDIU SLTI SLTIU ANDI ORI XORI</td><td><code>ADDI rt, rs, imm</code></td></tr>
+      <tr><td>I</td><td>LUI</td><td><code>LUI rt, imm</code></td></tr>
+      <tr><td>I</td><td>LW LH LHU LB LBU / SW SH SB</td><td><code>LW rt, offset(rs)</code> <code>LW rt, ラベル</code> <code>LW rt, ラベル+4</code> <code>LW rt, ラベル(rs)</code></td></tr>
+      <tr><td>I</td><td>BEQ BNE</td><td><code>BEQ rs, rt, 飛び先</code></td></tr>
+      <tr><td>I</td><td>BLEZ BGTZ BLTZ BGEZ BLTZAL BGEZAL</td><td><code>BLEZ rs, 飛び先</code>（rs と 0 を比較。…AL は $ra に戻り番地）</td></tr>
+      <tr><td>J</td><td>J JAL</td><td><code>J 飛び先</code></td></tr>
+      <tr><td>擬似</td><td>NOP LI LA MOVE NOT NEG NEGU MUL DIV DIVU</td><td><code>LI rd, n</code> <code>LA rd, ラベル</code> <code>MOVE rd, rs</code> <code>NOT rd, rs</code> <code>MUL rd, rs, rt</code></td></tr>
+      <tr><td>擬似</td><td>B BEQZ BNEZ / BLT BGE BGT BLE / BLTU BGEU BGTU BLEU</td><td><code>B 飛び先</code> <code>BEQZ rs, 飛び先</code> <code>BLT rs, rt, 飛び先</code></td></tr>
+    </table>
+    <p><b>飛び先：</b>ラベル（<code>LOOP</code>）、絶対アドレス（<code>0x00400010</code>）、条件分岐のみ符号付きオフセット（<code>+3</code>、<code>-2</code>）。</p>
+    <p><b>レジスタ：</b><code>$0</code>〜<code>$31</code> または <code>$zero $at $v0 $a0 $t0 $s0 $sp $ra</code> など。<b>数値：</b>10進・<code>0x</code>16進・<code>0b</code>2進・文字（<code>'A'</code>、<code>'\n'</code>）。擬似命令の展開には <code>$at</code>（$1）を使います。</p>
+
+    <h3>ディレクティブ（データの定義）</h3>
+    <table>
+      <tr><th>ディレクティブ</th><th>動作</th></tr>
+      <tr><td><code>.text</code> / <code>.data [番地]</code></td><td>以降を命令（既定 <code>0x00400000</code>〜）/ データ（既定 <code>0x10010000</code>〜）として配置</td></tr>
+      <tr><td><code>.word</code> <code>.half</code> <code>.byte</code></td><td>4 / 2 / 1 バイトの値を並べる（例: <code>.word 1, 2, LABEL</code>）。.word と .half は境界に自動でそろえます</td></tr>
+      <tr><td><code>.ascii "…"</code> / <code>.asciiz "…"</code></td><td>文字列（UTF-8）。.asciiz は末尾に 0 を付ける。<code>\n \t \0 \" \\</code> が使えます</td></tr>
+      <tr><td><code>.space n</code></td><td>n バイトの領域を確保（値は 0）</td></tr>
+      <tr><td><code>.align n</code></td><td>2<sup>n</sup> バイト境界にそろえる（n = 0〜3）</td></tr>
+      <tr><td><code>.globl</code></td><td>書いても動作に影響しません</td></tr>
+    </table>
+    <pre class="help-ex">        .data
+ARRAY:  .word   3, 1, 4, 1, 5
+MSG:    .asciiz "合計 = "
+        .text
+MAIN:   LA      $a0, MSG
+        LI      $v0, 4
+        SYSCALL                 # 文字列を出力
+        LW      $t0, ARRAY+4    # $t0 = 1</pre>
+
+    <h3>システムコール（SYSCALL）</h3>
+    <p><code>$v0</code> にサービス番号、<code>$a0</code> に引数を入れて <code>SYSCALL</code> を実行します。出力は「出力」画面に表示されます。</p>
+    <table>
+      <tr><th>$v0</th><th>動作</th></tr>
+      <tr><td>1</td><td>$a0 を符号付き 10 進で出力</td></tr>
+      <tr><td>4</td><td>$a0 の番地から 0 のバイトまでを文字列（UTF-8）として出力</td></tr>
+      <tr><td>10</td><td>プログラムを終了</td></tr>
+      <tr><td>11</td><td>$a0 の下位 8 ビットを文字として出力</td></tr>
+      <tr><td>17</td><td>$a0 を終了コードとしてプログラムを終了</td></tr>
+      <tr><td>34</td><td>$a0 を 16 進（0x 付き 8 桁）で出力</td></tr>
+    </table>
+    <p><code>BREAK</code> を実行すると、その場で停止します。</p>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script id="assembler">
+// ===== MIPS アセンブラ本体（DOM 非依存。test/assembler.test.js からも読み込まれる） =====
+// MIPS I の整数命令（MIPS32 のエンコーディング）と、MARS / SPIM 互換の擬似命令・ディレクティブに対応する。
+var MipsAssembler = (function () {
+  'use strict';
+
+  var REG_NAMES = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3',
+    't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
+    's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7',
+    't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra'];
+  var REG_MAP = {};
+  REG_NAMES.forEach(function (n, i) { REG_MAP[n] = i; });
+  REG_MAP.s8 = 30;
+
+  // 実命令（MIPS32 のエンコーディング）
+  var R3 = { ADD: 0x20, ADDU: 0x21, SUB: 0x22, SUBU: 0x23, AND: 0x24, OR: 0x25, XOR: 0x26, NOR: 0x27, SLT: 0x2A, SLTU: 0x2B }; // rd, rs, rt
+  var SHIFT = { SLL: 0x00, SRL: 0x02, SRA: 0x03 };                              // rd, rt, shamt
+  var SHIFTV = { SLLV: 0x04, SRLV: 0x06, SRAV: 0x07 };                          // rd, rt, rs
+  var MULDIV = { MULT: 0x18, MULTU: 0x19, DIV: 0x1A, DIVU: 0x1B };              // rs, rt
+  var MF = { MFHI: 0x10, MFLO: 0x12 };                                          // rd
+  var MT = { MTHI: 0x11, MTLO: 0x13 };                                          // rs
+  var TRAP = { SYSCALL: 0x0C, BREAK: 0x0D };                                    // [code]
+  var IARITH = { ADDI: 0x08, ADDIU: 0x09, SLTI: 0x0A, SLTIU: 0x0B, ANDI: 0x0C, ORI: 0x0D, XORI: 0x0E }; // rt, rs, imm
+  var MEM = { LB: 0x20, LH: 0x21, LW: 0x23, LBU: 0x24, LHU: 0x25, SB: 0x28, SH: 0x29, SW: 0x2B };      // rt, off(rs)
+  var BRANCH = { BEQ: 0x04, BNE: 0x05 };                                        // rs, rt, L
+  // rs と 0 の比較で分岐: [opcode, rt フィールド]（opcode 1 は REGIMM）
+  var BRANCHZ = { BLEZ: [0x06, 0], BGTZ: [0x07, 0], BLTZ: [0x01, 0x00], BGEZ: [0x01, 0x01], BLTZAL: [0x01, 0x10], BGEZAL: [0x01, 0x11] };
+  var JUMP = { J: 0x02, JAL: 0x03 };                                            // L
+  var DEFAULT_START = 0x00400000;                                               // .text の既定（MARS / SPIM）
+  var DEFAULT_DATA = 0x10010000;                                                // .data の既定（MARS / SPIM）
+
+  var SYNTAX = {};
+  Object.keys(R3).forEach(function (m) { SYNTAX[m] = m + ' rd, rs, rt'; });
+  Object.keys(SHIFT).forEach(function (m) { SYNTAX[m] = m + ' rd, rt, shamt'; });
+  Object.keys(SHIFTV).forEach(function (m) { SYNTAX[m] = m + ' rd, rt, rs'; });
+  Object.keys(MULDIV).forEach(function (m) { SYNTAX[m] = m + ' rs, rt'; });
+  Object.keys(MF).forEach(function (m) { SYNTAX[m] = m + ' rd'; });
+  Object.keys(MT).forEach(function (m) { SYNTAX[m] = m + ' rs'; });
+  SYNTAX.SYSCALL = 'SYSCALL';
+  SYNTAX.BREAK = 'BREAK [code]';
+  Object.keys(IARITH).forEach(function (m) { SYNTAX[m] = m + ' rt, rs, imm'; });
+  Object.keys(MEM).forEach(function (m) { SYNTAX[m] = m + ' rt, offset(rs)'; });
+  Object.keys(BRANCH).forEach(function (m) { SYNTAX[m] = m + ' rs, rt, 飛び先'; });
+  Object.keys(BRANCHZ).forEach(function (m) { SYNTAX[m] = m + ' rs, 飛び先'; });
+  Object.keys(JUMP).forEach(function (m) { SYNTAX[m] = m + ' 飛び先'; });
+  SYNTAX.JR = 'JR rs';
+  SYNTAX.JALR = 'JALR rs または JALR rd, rs';
+  SYNTAX.LUI = 'LUI rt, imm';
+  SYNTAX.NOP = 'NOP';
+  SYNTAX.LI = 'LI rd, n';
+  SYNTAX.LA = 'LA rd, ラベル';
+  SYNTAX.MOVE = 'MOVE rd, rs';
+  SYNTAX.MUL = 'MUL rd, rs, rt';
+  SYNTAX.NOT = 'NOT rd, rs';
+  SYNTAX.NEG = 'NEG rd, rs';
+  SYNTAX.NEGU = 'NEGU rd, rs';
+  SYNTAX.B = 'B 飛び先';
+  SYNTAX.BEQZ = 'BEQZ rs, 飛び先';
+  SYNTAX.BNEZ = 'BNEZ rs, 飛び先';
+  ['BLT', 'BGE', 'BGT', 'BLE', 'BLTU', 'BGEU', 'BGTU', 'BLEU'].forEach(function (m) { SYNTAX[m] = m + ' rs, rt, 飛び先'; });
+
+  var PSEUDO = {
+    NOP: 1, LI: 1, LA: 1, MOVE: 1, MUL: 1, NOT: 1, NEG: 1, NEGU: 1, B: 1, BEQZ: 1, BNEZ: 1,
+    BLT: 1, BGE: 1, BGT: 1, BLE: 1, BLTU: 1, BGEU: 1, BGTU: 1, BLEU: 1
+  };
+  // 比較分岐の擬似命令: [比較命令, オペランドを入れ替えるか, 分岐命令]
+  var CMP_BRANCH = {
+    BLT: ['SLT', false, 'BNE'], BGE: ['SLT', false, 'BEQ'], BGT: ['SLT', true, 'BNE'], BLE: ['SLT', true, 'BEQ'],
+    BLTU: ['SLTU', false, 'BNE'], BGEU: ['SLTU', false, 'BEQ'], BGTU: ['SLTU', true, 'BNE'], BLEU: ['SLTU', true, 'BEQ']
+  };
+
+  function AsmError(message) { this.message = message; }
+
+  function hex(v, digits) {
+    return (v >>> 0).toString(16).toUpperCase().padStart(digits || 8, '0');
+  }
+
+  function expectOps(mn, ops, n) {
+    if (ops.length !== n) {
+      throw new AsmError('オペランドの数が違います（' + n + ' 個必要、' + ops.length + ' 個指定）。書式: ' + SYNTAX[mn]);
+    }
+  }
+
+  function parseReg(tok) {
+    var m = /^\$(\w+)$/.exec(tok);
+    if (m) {
+      var k = m[1].toLowerCase();
+      if (/^\d+$/.test(k)) {
+        var n = parseInt(k, 10);
+        if (n <= 31) return n;
+      } else if (Object.prototype.hasOwnProperty.call(REG_MAP, k)) {
+        return REG_MAP[k];
+      }
+    }
+    throw new AsmError('レジスタの指定が不正です: "' + tok + '"（例: $8, $t0, $zero）');
+  }
+
+  // 文字のエスケープ（'\n' や "a\tb" の中で使える）
+  var ESC = { n: 10, t: 9, r: 13, '0': 0, '\\': 92, '"': 34, "'": 39 };
+
+  // 数値（10進・0x16進・0b2進、符号付き）と文字（'A'、'\n'）。数値でなければ null
+  function parseNum(tok) {
+    var c = /^'(\\.|[^\\'])'$/.exec(tok);
+    if (c) {
+      if (c[1].length === 1) return c[1].charCodeAt(0);
+      return ESC.hasOwnProperty(c[1].charAt(1)) ? ESC[c[1].charAt(1)] : null;
+    }
+    var m = /^([+-]?)(0x[0-9a-f]+|0b[01]+|\d+)$/i.exec(tok.replace(/_/g, ''));
+    if (!m) return null;
+    var v = Number(m[2]);
+    return m[1] === '-' ? -v : v;
+  }
+
+  // ラベル名・ラベル±数値・絶対アドレス → アドレス
+  function resolveAddr(tok, labels) {
+    if (labels.has(tok)) return labels.get(tok);
+    var v = parseNum(tok);
+    if (v !== null) {
+      if (v < 0 || v > 0xFFFFFFFF) throw new AsmError('アドレスが 32 ビットの範囲外です: ' + tok);
+      return v;
+    }
+    var m = /^([A-Za-z_][\w.]*)\s*([+-])\s*(\S+)$/.exec(tok);
+    if (m && parseNum(m[3]) !== null) {
+      var base = resolveAddr(m[1], labels), off = parseNum(m[3]);
+      return (m[2] === '+' ? base + off : base - off) >>> 0;
+    }
+    if (/^[A-Za-z_][\w.]*$/.test(tok)) {
+      var hint = '';
+      labels.forEach(function (_, name) {
+        if (!hint && name.toLowerCase() === tok.toLowerCase()) hint = '（"' + name + '" のことですか？ ラベルは大文字小文字を区別します）';
+      });
+      throw new AsmError('未定義のラベルです: ' + tok + hint);
+    }
+    throw new AsmError('飛び先の指定が不正です: "' + tok + '"（ラベル名 または 0x00400010 のようなアドレス）');
+  }
+
+  // 16 ビット即値。%hi(L) / %lo(L) も受け付ける
+  // %hia(L) は内部用: %lo(L) を符号拡張して足すときの上位（ロード・ストアの展開で使う）
+  function parseImm16(tok, labels) {
+    var m = /^%(hia|hi|lo)\((.+)\)$/i.exec(tok);
+    if (m) {
+      var a = resolveAddr(m[2].trim(), labels), k = m[1].toLowerCase();
+      if (k === 'hia') return ((a + 0x8000) >>> 16) & 0xFFFF;
+      return k === 'hi' ? (a >>> 16) & 0xFFFF : a & 0xFFFF;
+    }
+    var v = parseNum(tok);
+    if (v === null) throw new AsmError('即値が数値ではありません: "' + tok + '"（例: 10, -5, 0x7A, \'A\'）');
+    if (v < -32768 || v > 0xFFFF) throw new AsmError('即値が 16 ビットに収まりません: ' + tok + '（-32768 〜 65535 / 0x0000 〜 0xFFFF）');
+    return v & 0xFFFF;
+  }
+
+  function parseShamt(tok) {
+    var v = parseNum(tok);
+    if (v === null || v < 0 || v > 31) throw new AsmError('シフト量は 0 〜 31 の数値で指定してください: "' + tok + '"');
+    return v;
+  }
+
+  var MEM_RE = /^(.*?)\s*\(\s*(\$\w+)\s*\)$/;
+  function parseMem(tok, labels) {
+    var m = MEM_RE.exec(tok);
+    if (!m) throw new AsmError('メモリの指定が不正です: "' + tok + '"（例: 4($11)）');
+    return { off: m[1] === '' ? 0 : parseImm16(m[1], labels), rs: parseReg(m[2]) };
+  }
+
+  function encR(rs, rt, rd, sh, fn) {
+    return {
+      word: ((rs << 21) | (rt << 16) | (rd << 11) | (sh << 6) | fn) >>> 0,
+      format: 'R',
+      fields: [['op', 6, 0], ['rs', 5, rs], ['rt', 5, rt], ['rd', 5, rd], ['shamt', 5, sh], ['funct', 6, fn]]
+    };
+  }
+  function encI(op, rs, rt, imm, immName) {
+    return {
+      word: ((op << 26) | (rs << 21) | (rt << 16) | (imm & 0xFFFF)) >>> 0,
+      format: 'I',
+      fields: [['op', 6, op], ['rs', 5, rs], ['rt', 5, rt], [immName || 'immediate', 16, imm & 0xFFFF]]
+    };
+  }
+  function encJ(op, target) {
+    return {
+      word: ((op << 26) | (target & 0x3FFFFFF)) >>> 0,
+      format: 'J',
+      fields: [['op', 6, op], ['target', 26, target & 0x3FFFFFF]]
+    };
+  }
+
+  // 分岐の飛び先（ラベル・絶対アドレス・符号付きオフセット）→ 16 ビットのオフセット
+  function encBranch(op, rs, rt, t, pc, labels) {
+    var off, addr;
+    if (/^[+-]/.test(t)) {
+      off = parseNum(t);
+      if (off === null) throw new AsmError('オフセットの指定が不正です: "' + t + '"（例: +3, -2）');
+      addr = (pc + 4 + off * 4) >>> 0;
+    } else {
+      addr = resolveAddr(t, labels);
+      if (addr % 4 !== 0) throw new AsmError('飛び先アドレスが 4 の倍数ではありません: 0x' + hex(addr));
+      off = (addr - (pc + 4)) / 4;
+    }
+    if (off < -32768 || off > 32767) throw new AsmError('分岐先が遠すぎます（オフセット ' + off + ' が 16 ビットの範囲外）');
+    var r = encI(op, rs, rt, off, 'offset');
+    r.note = '→ 0x' + hex(addr) + '（offset ' + off + '）';
+    return r;
+  }
+
+  // 実命令 1 語をエンコード
+  function encode(mn, ops, pc, labels) {
+    var r, target, addr;
+    if (R3.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 3);
+      return encR(parseReg(ops[1]), parseReg(ops[2]), parseReg(ops[0]), 0, R3[mn]);
+    }
+    if (SHIFT.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 3);
+      return encR(0, parseReg(ops[1]), parseReg(ops[0]), parseShamt(ops[2]), SHIFT[mn]);
+    }
+    if (SHIFTV.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 3);
+      return encR(parseReg(ops[2]), parseReg(ops[1]), parseReg(ops[0]), 0, SHIFTV[mn]);
+    }
+    if (MULDIV.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 2);
+      return encR(parseReg(ops[0]), parseReg(ops[1]), 0, 0, MULDIV[mn]);
+    }
+    if (MF.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 1);
+      return encR(0, 0, parseReg(ops[0]), 0, MF[mn]);
+    }
+    if (MT.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 1);
+      return encR(parseReg(ops[0]), 0, 0, 0, MT[mn]);
+    }
+    if (mn === 'JR') {
+      expectOps(mn, ops, 1);
+      return encR(parseReg(ops[0]), 0, 0, 0, 0x08);
+    }
+    if (mn === 'JALR') {
+      // JALR rs は rd = $ra（31）
+      if (ops.length === 1) return encR(parseReg(ops[0]), 0, 31, 0, 0x09);
+      expectOps(mn, ops, 2);
+      return encR(parseReg(ops[1]), 0, parseReg(ops[0]), 0, 0x09);
+    }
+    if (TRAP.hasOwnProperty(mn)) {
+      // code フィールド（20 ビット）は BREAK だけ指定できる
+      if (mn === 'SYSCALL') expectOps(mn, ops, 0);
+      else if (ops.length > 1) expectOps(mn, ops, 1);
+      var code = 0;
+      if (ops.length) {
+        code = parseNum(ops[0]);
+        if (code === null || code < 0 || code > 0xFFFFF) throw new AsmError('BREAK のコードは 0 〜 0xFFFFF の数値で指定してください: "' + ops[0] + '"');
+      }
+      return {
+        word: ((code << 6) | TRAP[mn]) >>> 0,
+        format: 'R',
+        fields: [['op', 6, 0], ['code', 20, code], ['funct', 6, TRAP[mn]]]
+      };
+    }
+    if (IARITH.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 3);
+      return encI(IARITH[mn], parseReg(ops[1]), parseReg(ops[0]), parseImm16(ops[2], labels));
+    }
+    if (mn === 'LUI') {
+      expectOps(mn, ops, 2);
+      return encI(0x0F, 0, parseReg(ops[0]), parseImm16(ops[1], labels));
+    }
+    if (MEM.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 2);
+      var mem = parseMem(ops[1], labels);
+      return encI(MEM[mn], mem.rs, parseReg(ops[0]), mem.off, 'offset');
+    }
+    if (BRANCH.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 3);
+      return encBranch(BRANCH[mn], parseReg(ops[0]), parseReg(ops[1]), ops[2], pc, labels);
+    }
+    if (BRANCHZ.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 2);
+      return encBranch(BRANCHZ[mn][0], parseReg(ops[0]), BRANCHZ[mn][1], ops[1], pc, labels);
+    }
+    if (JUMP.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 1);
+      addr = resolveAddr(ops[0], labels);
+      if (addr % 4 !== 0) throw new AsmError('飛び先アドレスが 4 の倍数ではありません: 0x' + hex(addr));
+      if (((addr ^ (pc + 4)) & 0xF0000000) !== 0) {
+        throw new AsmError('J 形式では上位 4 ビットが異なるアドレスへは飛べません: 0x' + hex(addr));
+      }
+      target = (addr >>> 2) & 0x3FFFFFF;
+      r = encJ(JUMP[mn], target);
+      r.note = '→ 0x' + hex(addr) + '（target 0x' + hex(target, 7) + '）';
+      return r;
+    }
+    throw new AsmError('未対応の命令です: ' + mn);
+  }
+
+  function isReal(mn) {
+    return R3.hasOwnProperty(mn) || SHIFT.hasOwnProperty(mn) || SHIFTV.hasOwnProperty(mn) || MULDIV.hasOwnProperty(mn) ||
+      MF.hasOwnProperty(mn) || MT.hasOwnProperty(mn) || IARITH.hasOwnProperty(mn) ||
+      MEM.hasOwnProperty(mn) || BRANCH.hasOwnProperty(mn) || BRANCHZ.hasOwnProperty(mn) || JUMP.hasOwnProperty(mn) ||
+      TRAP.hasOwnProperty(mn) || mn === 'JR' || mn === 'JALR' || mn === 'LUI';
+  }
+
+  // 擬似命令を実命令の列に展開（ラベル解決は不要なので パス1 で語数が確定する）
+  // 展開は MARS / SPIM と同じく、オーバーフロー例外を起こさない ADDIU / ADDU を使う
+  function expand(mn, ops) {
+    switch (mn) {
+      case 'NOP':
+        expectOps(mn, ops, 0);
+        return [['SLL', ['$0', '$0', '0']]];
+      case 'LI': {
+        expectOps(mn, ops, 2);
+        var v = parseNum(ops[1]);
+        if (v === null) throw new AsmError('LI の値が数値ではありません: "' + ops[1] + '"');
+        if (v < -0x80000000 || v > 0xFFFFFFFF) throw new AsmError('LI の値が 32 ビットに収まりません: ' + ops[1]);
+        if (v >= -32768 && v <= 32767) return [['ADDIU', [ops[0], '$0', String(v)]]];
+        if (v >= 0 && v <= 0xFFFF) return [['ORI', [ops[0], '$0', '0x' + hex(v, 4)]]];
+        return [['LUI', ['$at', '0x' + hex((v >>> 16) & 0xFFFF, 4)]],
+                ['ORI', [ops[0], '$at', '0x' + hex(v & 0xFFFF, 4)]]];
+      }
+      case 'LA':
+        expectOps(mn, ops, 2);
+        return [['LUI', ['$at', '%hi(' + ops[1] + ')']], ['ORI', [ops[0], '$at', '%lo(' + ops[1] + ')']]];
+      case 'MOVE':
+        expectOps(mn, ops, 2);
+        return [['ADDU', [ops[0], '$0', ops[1]]]];
+      case 'NOT':
+        expectOps(mn, ops, 2);
+        return [['NOR', [ops[0], ops[1], '$0']]];
+      case 'NEG': case 'NEGU':
+        expectOps(mn, ops, 2);
+        return [[mn === 'NEG' ? 'SUB' : 'SUBU', [ops[0], '$0', ops[1]]]];
+      case 'MUL':
+        expectOps(mn, ops, 3);
+        return [['MULT', [ops[1], ops[2]]], ['MFLO', [ops[0]]]];
+      case 'DIV': case 'DIVU':
+        if (ops.length === 3) return [[mn, [ops[1], ops[2]]], ['MFLO', [ops[0]]]];
+        return [[mn, ops]];
+      case 'B':
+        expectOps(mn, ops, 1);
+        return [['BEQ', ['$0', '$0', ops[0]]]];
+      case 'BEQZ': case 'BNEZ':
+        expectOps(mn, ops, 2);
+        return [[mn === 'BEQZ' ? 'BEQ' : 'BNE', [ops[0], '$0', ops[1]]]];
+    }
+    if (CMP_BRANCH.hasOwnProperty(mn)) {
+      expectOps(mn, ops, 3);
+      var cb = CMP_BRANCH[mn];
+      var a = cb[1] ? ops[1] : ops[0], b = cb[1] ? ops[0] : ops[1];
+      return [[cb[0], ['$at', a, b]], [cb[2], ['$at', '$0', ops[2]]]];
+    }
+    if (MEM.hasOwnProperty(mn) && ops.length === 2) {
+      // ラベルを使ったメモリ指定（LW $t0, DATA / LW $t0, DATA+4 / LW $t0, DATA($t1)）は $at を使って展開
+      var mm = MEM_RE.exec(ops[1]);
+      var off = (mm ? mm[1] : ops[1]).trim();
+      var plain = off === '' || off.charAt(0) === '%' || (mm && parseNum(off) !== null);
+      if (!plain) {
+        if (off.charAt(0) === '$') throw new AsmError('メモリの指定が不正です: "' + ops[1] + '"（例: 4($11)、ラベル）');
+        var hi = ['LUI', ['$at', '%hia(' + off + ')']], lo = [mn, [ops[0], '%lo(' + off + ')($at)']];
+        return mm ? [hi, ['ADDU', ['$at', '$at', mm[2]]], lo] : [hi, lo];
+      }
+    }
+    if (isReal(mn)) return [[mn, ops]];
+    throw new AsmError('未知の命令です: ' + mn);
+  }
+
+  // コメント（# // ;）を取り除く。文字列・文字の中の記号はコメントとみなさない
+  function stripComment(line) {
+    var q = null;
+    for (var i = 0; i < line.length; i++) {
+      var c = line.charAt(i);
+      if (q) {
+        if (c === '\\') i++;
+        else if (c === q) q = null;
+        continue;
+      }
+      if (c === '"' || c === "'") { q = c; continue; }
+      if (c === '#' || c === ';' || (c === '/' && line.charAt(i + 1) === '/')) return line.slice(0, i);
+    }
+    return line;
+  }
+
+  // カンマで区切る（文字列・文字の中のカンマでは区切らない）
+  function splitArgs(s) {
+    if (s.trim() === '') return [];
+    var out = [], cur = '', q = null;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charAt(i);
+      if (q) {
+        cur += c;
+        if (c === '\\' && i + 1 < s.length) cur += s.charAt(++i);
+        else if (c === q) q = null;
+        continue;
+      }
+      if (c === '"' || c === "'") { q = c; cur += c; continue; }
+      if (c === ',') { out.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    out.push(cur.trim());
+    return out;
+  }
+
+  function utf8(str) {
+    var out = [], enc = encodeURIComponent(str);
+    for (var i = 0; i < enc.length; i++) {
+      if (enc.charAt(i) === '%') { out.push(parseInt(enc.substr(i + 1, 2), 16)); i += 2; }
+      else out.push(enc.charCodeAt(i));
+    }
+    return out;
+  }
+
+  // "..." の並び（カンマ区切り）→ バイト列（UTF-8）。zero なら各文字列の後ろに 0 を付ける
+  function parseStrings(rest, zero) {
+    var out = [], s = rest.trim();
+    if (s === '') throw new AsmError('文字列がありません（例: "Hello"）');
+    for (;;) {
+      if (s.charAt(0) !== '"') throw new AsmError('文字列は "..." で囲んでください: ' + s);
+      var j = 1, str = '';
+      while (j < s.length && s.charAt(j) !== '"') {
+        if (s.charAt(j) === '\\') {
+          var e = s.charAt(j + 1);
+          if (!ESC.hasOwnProperty(e)) throw new AsmError('未対応のエスケープです: \\' + e + '（使えるもの: \\n \\t \\r \\0 \\\\ \\" \\\'）');
+          str += String.fromCharCode(ESC[e]);
+          j += 2;
+        } else {
+          str += s.charAt(j++);
+        }
+      }
+      if (j >= s.length) throw new AsmError('文字列が " で閉じられていません');
+      Array.prototype.push.apply(out, utf8(str));
+      if (zero) out.push(0);
+      s = s.slice(j + 1).trim();
+      if (s === '') return out;
+      if (s.charAt(0) !== ',') throw new AsmError('文字列の後ろに余分な文字があります: ' + s);
+      s = s.slice(1).trim();
+    }
+  }
+
+  var DATA_SIZE = { '.word': 4, '.half': 2, '.byte': 1 };
+  var DATA_RANGE = { 4: [-0x80000000, 0xFFFFFFFF], 2: [-0x8000, 0xFFFF], 1: [-0x80, 0xFF] };
+
+  // .word / .half / .byte の 1 つの値（.word だけラベルも使える）
+  function dataValue(tok, size, labels) {
+    var v = parseNum(tok);
+    if (v === null) {
+      if (size === 4) return resolveAddr(tok, labels);
+      throw new AsmError('値が数値ではありません: "' + tok + '"');
+    }
+    var r = DATA_RANGE[size];
+    if (v < r[0] || v > r[1]) throw new AsmError('値が ' + (size * 8) + ' ビットに収まりません: ' + tok);
+    return v;
+  }
+
+  /**
+   * source: アセンブリ文字列
+   * options.startAddress: .text の先頭（既定 0x00400000）, options.dataAddress: .data の先頭（既定 0x10010000）
+   * 戻り値: { words, data, errors, warnings, labels, dataBytes }
+   *   words: 命令（.text）, data: .data の内容をワード単位にまとめたもの { address, value, hex, line, source }
+   */
+  function assemble(source, options) {
+    options = options || {};
+    var textStart = options.startAddress !== undefined ? options.startAddress >>> 0 : DEFAULT_START;
+    var dataStart = options.dataAddress !== undefined ? options.dataAddress >>> 0 : DEFAULT_DATA;
+    var lines = String(source).split(/\r?\n/);
+    var labels = new Map();
+    var labelList = [];
+    var items = [];
+    var dataItems = [];
+    var errors = [];
+    var warnings = [];
+    var seg = 'text';
+    var pc = { text: textStart, data: dataStart };
+    var pending = [];   // アドレスが未定のラベル。次の命令・データの位置（境界合わせの後）に付ける
+
+    function flush() {
+      pending.forEach(function (p) {
+        if (labels.has(p.name)) {
+          errors.push({ line: p.line, message: 'ラベル "' + p.name + '" が重複しています' });
+        } else {
+          labels.set(p.name, pc[seg]);
+          labelList.push({ name: p.name, address: pc[seg], line: p.line, segment: seg });
+        }
+      });
+      pending = [];
+    }
+    function alignData(n) {
+      var r = pc.data % n;
+      if (r) pc.data = (pc.data + n - r) >>> 0;
+    }
+    function dataOnly(name) {
+      if (seg !== 'data') throw new AsmError(name + ' は .data の中で使ってください（先に .data を書きます）');
+    }
+
+    function directive(text, lineNo) {
+      var m = /^(\.[A-Za-z]+)\s*(.*)$/.exec(text);
+      var name = (m ? m[1] : text.split(/\s+/)[0]).toLowerCase();
+      var rest = m ? m[2].trim() : '';
+      var n;
+      switch (name) {
+        case '.text':
+          flush();
+          if (rest) throw new AsmError('.text の配置先は「開始」欄で指定してください');
+          seg = 'text';
+          return;
+        case '.data':
+          flush();
+          seg = 'data';
+          if (rest) {
+            n = parseNum(rest);
+            if (n === null || n < 0 || n > 0xFFFFFFFF) throw new AsmError('.data のアドレスが不正です: ' + rest);
+            pc.data = n >>> 0;
+          }
+          return;
+        case '.globl': case '.global':
+          return;
+        case '.align':
+          dataOnly(name);
+          n = parseNum(rest);
+          if (n === null || n < 0 || n > 3) throw new AsmError('.align は 0 〜 3 で指定してください（2^n バイト境界にそろえる）');
+          alignData(1 << n);
+          flush();
+          return;
+        case '.space':
+          dataOnly(name);
+          n = parseNum(rest);
+          if (n === null || n < 0 || n > 0x100000) throw new AsmError('.space のバイト数は 0 〜 1048576 で指定してください: ' + rest);
+          flush();
+          dataItems.push({ line: lineNo, source: text, address: pc.data, space: n });
+          pc.data = (pc.data + n) >>> 0;
+          return;
+        case '.word': case '.half': case '.byte': {
+          dataOnly(name);
+          var size = DATA_SIZE[name], args = splitArgs(rest);
+          if (!args.length || args.some(function (a) { return a === ''; })) throw new AsmError(name + ' の値がありません（例: ' + name + ' 1, 2, 3）');
+          alignData(size);
+          flush();
+          dataItems.push({ line: lineNo, source: text, address: pc.data, size: size, args: args });
+          pc.data = (pc.data + size * args.length) >>> 0;
+          return;
+        }
+        case '.ascii': case '.asciiz': {
+          dataOnly(name);
+          var bytes = parseStrings(rest, name === '.asciiz');
+          flush();
+          dataItems.push({ line: lineNo, source: text, address: pc.data, bytes: bytes });
+          pc.data = (pc.data + bytes.length) >>> 0;
+          return;
+        }
+      }
+      warnings.push({ line: lineNo, message: 'ディレクティブは未対応のため無視しました: ' + name });
+    }
+
+    function instruction(text, lineNo) {
+      if (seg !== 'text') throw new AsmError('命令は .text の中に書いてください（いまは .data の中です）');
+      var m = /^(\S+)\s*(.*)$/.exec(text);
+      var mn = m[1].toUpperCase();
+      var ops = splitArgs(m[2]);
+      if (ops.some(function (o) { return o === ''; })) throw new AsmError('空のオペランドがあります（カンマの位置を確認してください）');
+      var seq = expand(mn, ops);
+      flush();
+      items.push({ line: lineNo, source: text, address: pc.text, seq: seq, pseudo: PSEUDO.hasOwnProperty(mn) || seq.length > 1 });
+      pc.text = (pc.text + 4 * seq.length) >>> 0;
+    }
+
+    // パス1: ラベルのアドレスと、命令・データの配置を確定
+    lines.forEach(function (raw, i) {
+      var lineNo = i + 1;
+      var text = stripComment(raw);
+      var m;
+      while ((m = /^\s*([A-Za-z_][\w.]*)\s*:/.exec(text))) {
+        pending.push({ name: m[1], line: lineNo });
+        text = text.slice(m[0].length);
+      }
+      text = text.trim();
+      if (text === '') return;
+      try {
+        if (text.charAt(0) === '.') directive(text, lineNo); else instruction(text, lineNo);
+      } catch (e) {
+        if (!(e instanceof AsmError)) throw e;
+        errors.push({ line: lineNo, message: e.message });
+        flush();
+      }
+    });
+    flush();
+
+    // パス2: エンコード
+    var words = [];
+    items.forEach(function (item) {
+      var out = [];
+      try {
+        item.seq.forEach(function (ins, j) {
+          var addr = (item.address + 4 * j) >>> 0;
+          var r = encode(ins[0], ins[1], addr, labels);
+          out.push({
+            address: addr,
+            word: r.word,
+            hex: hex(r.word),
+            format: r.format,
+            fields: r.fields,
+            note: r.note || '',
+            asm: ins[0] + (ins[1].length ? ' ' + ins[1].join(', ') : ''),
+            line: item.line,
+            source: item.source,
+            pseudo: item.pseudo,
+            index: j,
+            count: item.seq.length
+          });
+        });
+        Array.prototype.push.apply(words, out);
+      } catch (e) {
+        if (!(e instanceof AsmError)) throw e;
+        errors.push({ line: item.line, message: e.message });
+      }
+    });
+
+    // パス2: データ（ビッグエンディアンでバイトを並べ、ワード単位にまとめる）
+    var bytes = new Map(), dataBytes = 0;
+    function putByte(addr, b, item) {
+      addr = addr >>> 0;
+      if (bytes.has(addr)) throw new AsmError('データの配置が重なっています（0x' + hex(addr) + '）');
+      bytes.set(addr, { b: b & 0xFF, line: item.line, source: item.source });
+    }
+    dataItems.forEach(function (item) {
+      try {
+        if (item.space !== undefined) { dataBytes += item.space; return; }
+        if (item.bytes) {
+          item.bytes.forEach(function (b, k) { putByte(item.address + k, b, item); });
+          dataBytes += item.bytes.length;
+          return;
+        }
+        item.args.forEach(function (a, k) {
+          var v = dataValue(a, item.size, labels), base = item.address + k * item.size;
+          for (var b = 0; b < item.size; b++) putByte(base + b, v >>> ((item.size - 1 - b) * 8), item);
+        });
+        dataBytes += item.size * item.args.length;
+      } catch (e) {
+        if (!(e instanceof AsmError)) throw e;
+        errors.push({ line: item.line, message: e.message });
+      }
+    });
+    var byWord = new Map();
+    bytes.forEach(function (e, a) {
+      var wa = (a & ~3) >>> 0;
+      var w = byWord.get(wa);
+      if (!w) { w = { address: wa, value: 0, line: e.line, source: e.source }; byWord.set(wa, w); }
+      w.value = (w.value | (e.b << ((3 - (a & 3)) * 8))) >>> 0;
+      if (e.line < w.line) { w.line = e.line; w.source = e.source; }
+    });
+    var data = Array.from(byWord.values()).sort(function (a, b) { return a.address - b.address; });
+    data.forEach(function (w) { w.hex = hex(w.value); });
+    if (words.length && data.length) {
+      var t0 = words[0].address, t1 = words[words.length - 1].address;
+      if (data.some(function (w) { return w.address >= t0 && w.address <= t1; })) {
+        warnings.push({ line: data[0].line, message: '.data がプログラム（.text）と同じ番地に重なっています' });
+      }
+    }
+
+    errors.sort(function (a, b) { return a.line - b.line; });
+    return { words: words, data: data, errors: errors, warnings: warnings, labels: labelList, dataBytes: dataBytes };
+  }
+
+  return { assemble: assemble, hex: hex, parseNum: parseNum, DEFAULT_START: DEFAULT_START, DEFAULT_DATA: DEFAULT_DATA };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = MipsAssembler;
+</script>
+
+<script id="simulator">
+// ===== MIPS シミュレータ本体（DOM 非依存） =====
+// 逐次実行（1 ステップ = 1 命令）と、5 段パイプライン（IF / ID / EX / MEM / WB、1 ステップ = 1 クロック）を実行する。
+// パイプラインは分岐を ID で判定し、EX・MEM・WB から ID へフォワーディングする。
+// 設定（createMachine の cfg）:
+//   delaySlot: true  … 分岐・ジャンプの直後の 1 命令（遅延スロット）を常に実行。JAL は $ra = PC+8
+//              false … 遅延スロットなし（既定）。パイプラインでは分岐成立時にフェッチ済みの 1 命令をフラッシュ。JAL は $ra = PC+4
+//   loadUse:   'stall' … ロードの結果を直後の命令が使うと 1 クロックストール（既定）
+//              'delay' … MIPS I の遅延ロード。ストールせず、直後の命令は古い値を読む
+// ADD / ADDI / SUB の符号付きオーバーフローは例外として停止する（結果は書き込まない）。メモリはビッグエンディアン。
+var MipsSimulator = (function () {
+  'use strict';
+
+  var FUNCT = { 0x00: 'SLL', 0x02: 'SRL', 0x03: 'SRA', 0x04: 'SLLV', 0x06: 'SRLV', 0x07: 'SRAV', 0x08: 'JR', 0x09: 'JALR',
+    0x0C: 'SYSCALL', 0x0D: 'BREAK', 0x10: 'MFHI', 0x11: 'MTHI', 0x12: 'MFLO', 0x13: 'MTLO',
+    0x18: 'MULT', 0x19: 'MULTU', 0x1A: 'DIV', 0x1B: 'DIVU', 0x20: 'ADD', 0x21: 'ADDU', 0x22: 'SUB', 0x23: 'SUBU',
+    0x24: 'AND', 0x25: 'OR', 0x26: 'XOR', 0x27: 'NOR', 0x2A: 'SLT', 0x2B: 'SLTU' };
+  var OPC = { 0x02: 'J', 0x03: 'JAL', 0x04: 'BEQ', 0x05: 'BNE', 0x06: 'BLEZ', 0x07: 'BGTZ', 0x08: 'ADDI', 0x09: 'ADDIU',
+    0x0A: 'SLTI', 0x0B: 'SLTIU', 0x0C: 'ANDI', 0x0D: 'ORI', 0x0E: 'XORI', 0x0F: 'LUI',
+    0x20: 'LB', 0x21: 'LH', 0x23: 'LW', 0x24: 'LBU', 0x25: 'LHU', 0x28: 'SB', 0x29: 'SH', 0x2B: 'SW' };
+  var REGIMM = { 0x00: 'BLTZ', 0x01: 'BGEZ', 0x10: 'BLTZAL', 0x11: 'BGEZAL' };   // opcode 1 の rt フィールド
+  function set(list) { var o = {}; list.forEach(function (k) { o[k] = true; }); return o; }
+  var DEST_RD = set(['ADD', 'ADDU', 'SUB', 'SUBU', 'AND', 'OR', 'XOR', 'NOR', 'SLT', 'SLTU', 'SLL', 'SRL', 'SRA',
+    'SLLV', 'SRLV', 'SRAV', 'MFHI', 'MFLO', 'JALR']);
+  var DEST_RT = set(['ADDI', 'ADDIU', 'ANDI', 'ORI', 'XORI', 'SLTI', 'SLTIU', 'LUI', 'LW', 'LB', 'LBU', 'LH', 'LHU']);
+  var LINK31 = set(['JAL', 'BLTZAL', 'BGEZAL']);   // $ra に戻り番地を書く（BLTZAL / BGEZAL は分岐しなくても書く）
+  var NO_RS = set(['SLL', 'SRL', 'SRA', 'LUI', 'J', 'JAL', 'MFHI', 'MFLO', 'SYSCALL', 'BREAK']);
+  var USE_RT = set(['ADD', 'ADDU', 'SUB', 'SUBU', 'AND', 'OR', 'XOR', 'NOR', 'SLT', 'SLTU', 'SLL', 'SRL', 'SRA',
+    'SLLV', 'SRLV', 'SRAV', 'MULT', 'MULTU', 'DIV', 'DIVU', 'BEQ', 'BNE', 'SW', 'SH', 'SB']);
+  var LOADS = set(['LW', 'LB', 'LBU', 'LH', 'LHU']);
+  var STORES = set(['SW', 'SH', 'SB']);
+  var R3 = set(['ADD', 'ADDU', 'SUB', 'SUBU', 'AND', 'OR', 'XOR', 'NOR', 'SLT', 'SLTU']);
+  var LOGIC_I = set(['ANDI', 'ORI', 'XORI']);
+  var SYSCALLS = '1, 4, 10, 11, 17, 34';
+
+  function hex(v, n) { return (v >>> 0).toString(16).toUpperCase().padStart(n || 8, '0'); }
+
+  function decode(w) {
+    w = w >>> 0;
+    var d = {
+      word: w, op: w >>> 26, rs: (w >>> 21) & 31, rt: (w >>> 16) & 31, rd: (w >>> 11) & 31,
+      sh: (w >>> 6) & 31, fn: w & 63, imm: w & 0xFFFF, target: w & 0x3FFFFFF
+    };
+    d.simm = (d.imm << 16) >> 16;
+    d.mn = d.op === 0 ? (FUNCT[d.fn] || null) : d.op === 1 ? (REGIMM[d.rt] || null) : (OPC[d.op] || null);
+    d.nop = w === 0;
+    return d;
+  }
+  var NOP_D = decode(0);
+
+  function destReg(d) {
+    if (!d.mn || d.nop) return 0;
+    if (DEST_RD[d.mn]) return d.rd;
+    if (DEST_RT[d.mn]) return d.rt;
+    if (LINK31[d.mn]) return 31;
+    return 0;
+  }
+  function usesRs(d) { return !!d.mn && !d.nop && !NO_RS[d.mn]; }
+  function usesRt(d) { return !!d.mn && !d.nop && !!USE_RT[d.mn]; }
+  // 読み出すレジスタ番号。SYSCALL は rs / rt の代わりに $v0 / $a0 を読む
+  function rsReg(d) { return d.mn === 'SYSCALL' ? 2 : d.rs; }
+  function rtReg(d) { return d.mn === 'SYSCALL' ? 4 : d.rt; }
+  function readsRs(d) { return d.mn === 'SYSCALL' || usesRs(d); }
+  function readsRt(d) { return d.mn === 'SYSCALL' || usesRt(d); }
+
+  function branchAddr(d, pc) { return (pc + 4 + d.simm * 4) >>> 0; }
+  function jumpAddr(d, pc) { return ((((pc + 4) >>> 0) & 0xF0000000) | (d.target << 2)) >>> 0; }
+
+  function disasm(d, pc) {
+    if (d.nop) return 'NOP';
+    if (!d.mn) return '不明な命令 0x' + hex(d.word);
+    var r = function (n) { return '$' + n; };
+    var m = d.mn;
+    if (R3[m]) return m + ' ' + r(d.rd) + ', ' + r(d.rs) + ', ' + r(d.rt);
+    switch (m) {
+      case 'SLL': case 'SRL': case 'SRA': return m + ' ' + r(d.rd) + ', ' + r(d.rt) + ', ' + d.sh;
+      case 'SLLV': case 'SRLV': case 'SRAV': return m + ' ' + r(d.rd) + ', ' + r(d.rt) + ', ' + r(d.rs);
+      case 'JR': case 'MTHI': case 'MTLO': return m + ' ' + r(d.rs);
+      case 'JALR': return d.rd === 31 ? m + ' ' + r(d.rs) : m + ' ' + r(d.rd) + ', ' + r(d.rs);
+      case 'MFHI': case 'MFLO': return m + ' ' + r(d.rd);
+      case 'MULT': case 'MULTU': case 'DIV': case 'DIVU': return m + ' ' + r(d.rs) + ', ' + r(d.rt);
+      case 'BLEZ': case 'BGTZ': case 'BLTZ': case 'BGEZ': case 'BLTZAL': case 'BGEZAL':
+        return m + ' ' + r(d.rs) + ', ' + (pc === undefined ? d.simm : '0x' + hex(branchAddr(d, pc)));
+      case 'SYSCALL': return m;
+      case 'BREAK': { var code = (d.word >>> 6) & 0xFFFFF; return code ? m + ' ' + code : m; }
+      case 'LUI': return m + ' ' + r(d.rt) + ', 0x' + hex(d.imm, 4);
+      case 'BEQ': case 'BNE':
+        return m + ' ' + r(d.rs) + ', ' + r(d.rt) + ', ' + (pc === undefined ? d.simm : '0x' + hex(branchAddr(d, pc)));
+      case 'J': case 'JAL':
+        return m + ' ' + (pc === undefined ? '0x' + hex(d.target, 7) : '0x' + hex(jumpAddr(d, pc)));
+    }
+    if (LOADS[m] || STORES[m]) return m + ' ' + r(d.rt) + ', ' + d.simm + '(' + r(d.rs) + ')';
+    if (LOGIC_I[m]) return m + ' ' + r(d.rt) + ', ' + r(d.rs) + ', 0x' + hex(d.imm, 4);
+    return m + ' ' + r(d.rt) + ', ' + r(d.rs) + ', ' + d.simm;
+  }
+
+  // 符号付き演算の結果。32 ビットに収まらなければ null（オーバーフロー）
+  function signed32(s) {
+    return s > 0x7FFFFFFF || s < -0x80000000 ? null : s >>> 0;
+  }
+  function overflow(d, a, b) {
+    return '算術オーバーフロー例外（' + d.mn + '）: 0x' + hex(a) + (d.mn === 'SUB' ? ' − ' : ' + ') + '0x' + hex(b) + ' は符号付き 32 ビットに収まりません';
+  }
+
+  // EX ステージ相当の演算。a = rs の値, b = rt の値
+  function alu(d, a, b, pc, st, linkOffset) {
+    var res = { c: 0 };
+    switch (d.mn) {
+      case 'ADD':
+        res.c = signed32((a | 0) + (b | 0));
+        if (res.c === null) res.err = overflow(d, a, b);
+        break;
+      case 'SUB':
+        res.c = signed32((a | 0) - (b | 0));
+        if (res.c === null) res.err = overflow(d, a, b);
+        break;
+      case 'ADDI':
+        res.c = signed32((a | 0) + d.simm);
+        if (res.c === null) res.err = overflow(d, a, d.simm >>> 0);
+        break;
+      case 'ADDU': res.c = (a + b) >>> 0; break;
+      case 'SUBU': res.c = (a - b) >>> 0; break;
+      case 'ADDIU': res.c = (a + d.simm) >>> 0; break;
+      case 'AND': res.c = (a & b) >>> 0; break;
+      case 'OR': res.c = (a | b) >>> 0; break;
+      case 'XOR': res.c = (a ^ b) >>> 0; break;
+      case 'SLT': res.c = (a | 0) < (b | 0) ? 1 : 0; break;
+      case 'NOR': res.c = ~(a | b) >>> 0; break;
+      case 'SLTU': res.c = (a >>> 0) < (b >>> 0) ? 1 : 0; break;
+      case 'SLL': res.c = (b << d.sh) >>> 0; break;
+      case 'SRL': res.c = b >>> d.sh; break;
+      case 'SRA': res.c = (b | 0) >> d.sh >>> 0; break;
+      case 'SLLV': res.c = (b << (a & 31)) >>> 0; break;
+      case 'SRLV': res.c = b >>> (a & 31); break;
+      case 'SRAV': res.c = (b | 0) >> (a & 31) >>> 0; break;
+      case 'SLTI': res.c = (a | 0) < d.simm ? 1 : 0; break;
+      case 'SLTIU': res.c = (a >>> 0) < (d.simm >>> 0) ? 1 : 0; break;
+      case 'ANDI': res.c = (a & d.imm) >>> 0; break;
+      case 'ORI': res.c = (a | d.imm) >>> 0; break;
+      case 'XORI': res.c = (a ^ d.imm) >>> 0; break;
+      case 'LUI': res.c = (d.imm << 16) >>> 0; break;
+      case 'LW': case 'LB': case 'LBU': case 'LH': case 'LHU': case 'SW': case 'SH': case 'SB': res.c = (a + d.simm) >>> 0; break;
+      case 'MULT': {
+        var p = BigInt(a | 0) * BigInt(b | 0);
+        res.hi = Number(BigInt.asUintN(32, p >> BigInt(32)));
+        res.lo = Number(BigInt.asUintN(32, p));
+        break;
+      }
+      case 'MULTU': {
+        var q = BigInt(a >>> 0) * BigInt(b >>> 0);
+        res.hi = Number(BigInt.asUintN(32, q >> BigInt(32)));
+        res.lo = Number(BigInt.asUintN(32, q));
+        break;
+      }
+      case 'DIV':
+        if ((b | 0) === 0) { res.err = '0 で除算しました（DIV）'; break; }
+        res.lo = Math.trunc((a | 0) / (b | 0)) >>> 0;
+        res.hi = ((a | 0) % (b | 0)) >>> 0;
+        break;
+      case 'DIVU':
+        if ((b >>> 0) === 0) { res.err = '0 で除算しました（DIVU）'; break; }
+        res.lo = Math.floor((a >>> 0) / (b >>> 0)) >>> 0;
+        res.hi = ((a >>> 0) % (b >>> 0)) >>> 0;
+        break;
+      case 'MFHI': res.c = st.hi; break;
+      case 'MFLO': res.c = st.lo; break;
+      case 'MTHI': res.hi = a; break;
+      case 'MTLO': res.lo = a; break;
+      case 'JAL': case 'JALR': case 'BLTZAL': case 'BGEZAL': res.c = (pc + linkOffset) >>> 0; break;
+    }
+    return res;
+  }
+
+  // 分岐・ジャンプの判定（分岐命令でなければ null）
+  function branch(d, a, b, pc) {
+    switch (d.mn) {
+      case 'BEQ': return { taken: a === b, addr: branchAddr(d, pc) };
+      case 'BNE': return { taken: a !== b, addr: branchAddr(d, pc) };
+      case 'BLEZ': return { taken: (a | 0) <= 0, addr: branchAddr(d, pc) };
+      case 'BGTZ': return { taken: (a | 0) > 0, addr: branchAddr(d, pc) };
+      case 'BLTZ': case 'BLTZAL': return { taken: (a | 0) < 0, addr: branchAddr(d, pc) };
+      case 'BGEZ': case 'BGEZAL': return { taken: (a | 0) >= 0, addr: branchAddr(d, pc) };
+      case 'J': case 'JAL': return { taken: true, addr: jumpAddr(d, pc) };
+      case 'JR': case 'JALR': return { taken: true, addr: a >>> 0 };
+    }
+    return null;
+  }
+
+  function memRead(st, addr, mn) {
+    if (mn === 'LW') {
+      if (addr & 3) return { err: 'LW のアドレスが 4 の倍数ではありません: 0x' + hex(addr) };
+      return { v: (st.mem.get(addr) || 0) >>> 0 };
+    }
+    var w = st.mem.get((addr & ~3) >>> 0) || 0;
+    if (mn === 'LH' || mn === 'LHU') {
+      if (addr & 1) return { err: mn + ' のアドレスが 2 の倍数ではありません: 0x' + hex(addr) };
+      var half = (w >>> ((addr & 2) ? 0 : 16)) & 0xFFFF;
+      return { v: mn === 'LH' ? ((half << 16) >> 16) >>> 0 : half };
+    }
+    var byte = (w >>> ((3 - (addr & 3)) * 8)) & 0xFF;
+    return { v: mn === 'LB' ? ((byte << 24) >> 24) >>> 0 : byte };
+  }
+
+  function memWrite(st, addr, mn, val) {
+    var wa = (addr & ~3) >>> 0;
+    if (mn === 'SW') {
+      if (addr & 3) return 'SW のアドレスが 4 の倍数ではありません: 0x' + hex(addr);
+      st.mem.set(wa, val >>> 0);
+    } else if (mn === 'SH') {
+      if (addr & 1) return 'SH のアドレスが 2 の倍数ではありません: 0x' + hex(addr);
+      var hs = (addr & 2) ? 0 : 16;
+      st.mem.set(wa, (((st.mem.get(wa) || 0) & ~(0xFFFF << hs)) | ((val & 0xFFFF) << hs)) >>> 0);
+    } else {
+      var sh = (3 - (addr & 3)) * 8;
+      var w = st.mem.get(wa) || 0;
+      st.mem.set(wa, ((w & ~(0xFF << sh)) | ((val & 0xFF) << sh)) >>> 0);
+    }
+    st.changed.mem.push(wa);
+    return null;
+  }
+
+  var OUTPUT_LIMIT = 100000;
+  // UTF-8 のバイト列 → 文字列（不正な並びなら 1 バイト = 1 文字）
+  function decodeUtf8(bytes) {
+    try {
+      return decodeURIComponent(bytes.map(function (b) { return '%' + (b < 16 ? '0' : '') + b.toString(16); }).join(''));
+    } catch (e) {
+      return String.fromCharCode.apply(null, bytes);
+    }
+  }
+
+  function print(st, text) {
+    if (st.output.length >= OUTPUT_LIMIT) return;
+    st.output += text;
+    if (st.output.length >= OUTPUT_LIMIT) st.output = st.output.slice(0, OUTPUT_LIMIT) + '\n（出力が多すぎるため、以降は省略します）\n';
+  }
+
+  // SYSCALL（MARS / SPIM 互換のサブセット）。v0 = サービス番号, a0 = 引数
+  // 戻り値: { exit: 終了理由 } / { err: エラー } / {}
+  function syscall(st, v0, a0) {
+    switch (v0 | 0) {
+      case 1: print(st, String(a0 | 0)); return {};
+      case 4: {
+        var bytes = [], addr = a0 >>> 0;
+        for (var i = 0; i < OUTPUT_LIMIT; i++) {
+          var b = memRead(st, (addr + i) >>> 0, 'LBU').v;
+          if (!b) break;
+          bytes.push(b);
+        }
+        print(st, decodeUtf8(bytes));
+        return {};
+      }
+      case 10: return { exit: 'プログラムが終了しました（SYSCALL 10）' };
+      case 11: print(st, String.fromCharCode(a0 & 0xFF)); return {};
+      case 17: return { exit: 'プログラムが終了コード ' + (a0 | 0) + ' で終了しました（SYSCALL 17）' };
+      case 34: print(st, '0x' + hex(a0).toLowerCase()); return {};
+    }
+    return { err: 'SYSCALL のサービス番号 $v0 = ' + (v0 | 0) + ' には対応していません（対応: ' + SYSCALLS + '）' };
+  }
+
+  function setReg(st, n, v) {
+    if (n === 0) return;
+    st.regs[n] = v >>> 0;
+    st.changed.regs.push(n);
+  }
+
+  function setHiLo(st, r) {
+    if (r.hi !== undefined) { st.hi = r.hi >>> 0; st.changed.hi = true; }
+    if (r.lo !== undefined) { st.lo = r.lo >>> 0; st.changed.lo = true; }
+  }
+
+  function halt(st, msg, isError) {
+    st.halted = true;
+    st.haltReason = msg;
+    st.haltError = !!isError;
+  }
+
+  function fetch(st, addr) {
+    var w = (st.mem.get(addr) || 0) >>> 0;
+    return { word: w, d: decode(w), inProgram: st.mem.has(addr) };
+  }
+
+  // ---- 逐次実行: 1 ステップ = 1 命令 ----
+  function stepSeq(st, cfg) {
+    var pc = st.pc;
+    if (pc & 3) return halt(st, 'PC が 4 の倍数ではありません: 0x' + hex(pc), true);
+    var f = fetch(st, pc);
+    if (!f.inProgram) return halt(st, 'プログラム領域外（0x' + hex(pc) + '）に到達したため停止しました');
+    var d = f.d;
+    if (!d.mn) return halt(st, '0x' + hex(pc) + ' の命令 0x' + hex(f.word) + ' を解釈できません', true);
+    if (d.mn === 'BREAK') return halt(st, 'BREAK 命令（0x' + hex(pc) + '）で停止しました');
+    var a = st.regs[d.rs], b = st.regs[d.rt];
+    var r = alu(d, a, b, pc, st, cfg.delaySlot ? 8 : 4);
+    if (r.err) return halt(st, r.err, true);
+    var sc = d.mn === 'SYSCALL' ? syscall(st, st.regs[2], st.regs[4]) : null;
+    if (sc && sc.err) return halt(st, sc.err, true);
+    st.cycle++;
+    st.count++;
+    setHiLo(st, r);
+    var val = r.c;
+    if (LOADS[d.mn]) {
+      var m = memRead(st, r.c, d.mn);
+      if (m.err) return halt(st, m.err, true);
+      val = m.v;
+    } else if (STORES[d.mn]) {
+      var e = memWrite(st, r.c, d.mn, b);
+      if (e) return halt(st, e, true);
+    }
+    var dest = destReg(d);
+    if (dest) setReg(st, dest, val);
+    var br = branch(d, a, b, pc);
+    st.brCond = br && br.taken ? 1 : 0;
+    if (br) st.brAddr = br.addr;
+    // 遅延分岐: 分岐の飛び先は、遅延スロットの命令を実行した後に PC へ入る
+    var delayed = st.delayed, pendingHalt = st.pendingHalt;
+    st.delayed = null;
+    st.pendingHalt = null;
+    var next = (pc + 4) >>> 0;
+    if (br && br.taken) {
+      if (cfg.delaySlot) st.delayed = br.addr; else next = br.addr;
+    }
+    if (delayed !== null) next = delayed;
+    st.pc = next;
+    st.lastPc = pc;
+    if (sc && sc.exit) return halt(st, sc.exit);
+    if (pendingHalt) return halt(st, pendingHalt);
+    if (br && br.taken && br.addr === pc) {
+      var msg = '自己ループ（0x' + hex(pc) + ' の ' + d.mn + '）に到達したため停止しました';
+      if (cfg.delaySlot) st.pendingHalt = msg; else halt(st, msg);
+    }
+  }
+
+  // 例外・終了で止めるとき、先行する命令（MEM ステージにある命令）の書き込みを済ませる
+  function drain(st, L) {
+    var dd = destReg(L.d);
+    if (dd) setReg(st, dd, L.c);
+    if (L.valid) st.count++;
+  }
+
+  // seq: フェッチした命令の通し番号（パイプライン図で同じ番地の命令を区別する。0 = 命令なし）
+  var EMPTY = { pc: 0, ir: 0, d: NOP_D, valid: false, slot: false, bubble: '', seq: 0, rs: 0, rt: 0, c: 0, smd: 0 };
+
+  // ---- パイプライン実行: 1 ステップ = 1 クロック。全ステージを旧状態から一斉に更新 ----
+  function stepPipe(st, cfg) {
+    var P = st.pipe, c = st.cycle + 1;
+    var wbL = P.mem, exL = P.ex, idL = P.id, ifL = P.if;
+
+    // WB: MEM/WB の値をレジスタへ
+    var wbDest = destReg(wbL.d);
+    if (wbDest) setReg(st, wbDest, wbL.c);
+    if (wbL.valid) st.count++;
+
+    // MEM: ロード / ストア
+    var newMem = { pc: exL.pc, ir: exL.ir, d: exL.d, valid: exL.valid, slot: exL.slot, bubble: exL.bubble, seq: exL.seq, c: exL.c };
+    if (LOADS[exL.d.mn]) {
+      var m = memRead(st, exL.c, exL.d.mn);
+      if (m.err) return halt(st, m.err, true);
+      newMem.c = m.v;
+    } else if (STORES[exL.d.mn]) {
+      var e = memWrite(st, exL.c, exL.d.mn, exL.smd);
+      if (e) return halt(st, e, true);
+    }
+
+    // EX: ALU（例外・SYSCALL もここで処理する）
+    var r = alu(idL.d, idL.rs, idL.rt, idL.pc, st, cfg.delaySlot ? 8 : 4);
+    if (r.err) { drain(st, newMem); return halt(st, r.err, true); }
+    if (idL.d.mn === 'BREAK') { drain(st, newMem); return halt(st, 'BREAK 命令（0x' + hex(idL.pc) + '）で停止しました'); }
+    var sc = idL.d.mn === 'SYSCALL' ? syscall(st, idL.rs, idL.rt) : null;
+    if (sc && sc.err) { drain(st, newMem); return halt(st, sc.err, true); }
+    if (sc && sc.exit) {
+      // 後続の命令は捨て、先行する命令と SYSCALL 自身を完了させて終了
+      drain(st, newMem);
+      st.count++;
+      st.cycle = c;
+      return halt(st, sc.exit);
+    }
+    setHiLo(st, r);
+    var newEx = { pc: idL.pc, ir: idL.ir, d: idL.d, valid: idL.valid, slot: idL.slot, bubble: idL.bubble, seq: idL.seq, c: r.c, smd: idL.rt };
+
+    // ID: オペランド読み出し（フォワーディング: EX の ALU 出力 > MEM の結果 > WB の結果 > レジスタ）
+    var d = ifL.d;
+    if (ifL.valid && !d.mn) return halt(st, '0x' + hex(ifL.pc) + ' の命令 0x' + hex(ifL.ir) + ' を解釈できません', true);
+    var exIsLoad = !!LOADS[idL.d.mn], exDest = destReg(idL.d);
+    var memDest = destReg(exL.d);
+    var nRs = rsReg(d), nRt = rtReg(d), uRs = readsRs(d), uRt = readsRt(d);
+    var newId, br = null, stall = false;
+
+    // ロード直後の依存（load-use ハザード）: ストールして、次のクロックで MEM から受け取る
+    if (cfg.loadUse === 'stall' && exIsLoad && exDest &&
+        ((uRs && nRs === exDest) || (uRt && nRt === exDest))) {
+      stall = true;
+      newId = Object.assign({}, EMPTY, { bubble: 'stall' });
+      st.fwd = { rs: null, rt: null };
+      st.events.push({ kind: 'info', msg: 'ストール: ' + disasm(d, ifL.pc) + ' は直前の ' + idL.d.mn + ' の結果（$' + exDest + '）を待つため、1 クロック停止します' });
+    } else {
+      var operand = function (n, used, name) {
+        if (n === 0) return { v: 0, src: null };
+        if (exDest === n) {
+          if (!exIsLoad) return { v: newEx.c, src: 'EX' };
+          if (used) st.events.push({ kind: 'warn', msg: '遅延ロード: ' + disasm(d, ifL.pc) + ' の ' + name + '($' + n + ') は直前の ' + idL.d.mn + ' の結果を受け取れず、古い値を使います（NOP を挿入してください）' });
+        }
+        if (memDest === n) return { v: newMem.c, src: 'MEM' };
+        if (wbDest === n) return { v: wbL.c, src: 'WB' };
+        return { v: st.regs[n], src: null };
+      };
+      var rsO = operand(nRs, uRs, 'rs'), rtO = operand(nRt, uRt, 'rt');
+      newId = { pc: ifL.pc, ir: ifL.ir, d: d, valid: ifL.valid, slot: ifL.slot, bubble: ifL.bubble, seq: ifL.seq, rs: rsO.v, rt: rtO.v };
+      st.fwd = { rs: uRs ? rsO.src : null, rt: uRt ? rtO.src : null };
+      br = ifL.valid ? branch(d, rsO.v, rtO.v, ifL.pc) : null;
+    }
+    st.brCond = br && br.taken ? 1 : 0;
+    if (br) st.brAddr = br.addr;
+
+    // IF: 命令フェッチ
+    //   ストール中 … IF/ID を保持し、PC も進めない
+    //   遅延分岐   … 分岐命令が ID にあれば、今フェッチする命令は遅延スロット
+    //   それ以外   … 分岐成立なら、今フェッチした命令はフラッシュ
+    var newIf = ifL, flush = false;
+    if (!stall) {
+      var fpc = st.pc;
+      if (fpc & 3) return halt(st, 'PC が 4 の倍数ではありません: 0x' + hex(fpc), true);
+      var f = fetch(st, fpc);
+      flush = !!(br && br.taken && !cfg.delaySlot);
+      var seq = ++st.fetchSeq;
+      newIf = flush
+        ? Object.assign({}, EMPTY, { pc: fpc, ir: f.word, bubble: 'flush', seq: seq })
+        : { pc: fpc, ir: f.word, d: f.d, valid: f.inProgram, slot: !!br && !!cfg.delaySlot, bubble: '', seq: seq };
+      st.pc = br && br.taken ? br.addr : (fpc + 4) >>> 0;
+
+      // 停止判定: 2 クロック続けてプログラム領域外をフェッチ → 最後の命令が WB を終えたら停止
+      if (!flush && !f.inProgram) {
+        if (st.outFetch && !st.stopAt) {
+          st.stopAt = c + 2;
+          st.stopReason = 'プログラムの終端に到達し、パイプラインが空になったため停止しました';
+        }
+        st.outFetch = true;
+      } else {
+        st.outFetch = false;
+      }
+    }
+    // 無条件の自己ループ（J HALT など）→ 先行する命令（と遅延スロット）が完了したら停止
+    if (br && br.taken && br.addr === ifL.pc && !st.stopAt &&
+        (d.mn === 'J' || (d.mn === 'BEQ' && d.rs === d.rt))) {
+      st.stopAt = c + (cfg.delaySlot ? 4 : 3);
+      st.stopReason = '自己ループ（0x' + hex(ifL.pc) + ' の ' + d.mn + '）に到達したため停止しました';
+    }
+
+    P.if = newIf; P.id = newId; P.ex = newEx; P.mem = newMem;
+    P.wb = { pc: wbL.pc, ir: wbL.ir, d: wbL.d, valid: wbL.valid, slot: wbL.slot, bubble: wbL.bubble, seq: wbL.seq };
+    st.stall = stall;
+    st.cycle = c;
+    if (st.stopAt && c >= st.stopAt) halt(st, st.stopReason);
+  }
+
+  // $sp / $gp の既定値（MARS / SPIM と同じ）
+  var DEFAULT_REGS = { 28: 0x10008000, 29: 0x7FFFEFFC };
+  var DATA_START = 0x10010000;
+
+  function initialState(cfg) {
+    var mem = new Map();
+    cfg.words.forEach(function (w) { mem.set(w.address >>> 0, w.word >>> 0); });
+    (cfg.initMem || []).forEach(function (e) { mem.set(e.address >>> 0, e.value >>> 0); });
+    var regs = [];
+    for (var i = 0; i < 32; i++) regs.push(i === 0 ? 0 : ((cfg.initRegs && cfg.initRegs[i]) || 0) >>> 0);
+    return {
+      mode: cfg.mode, cycle: 0, count: 0, pc: cfg.startAddress >>> 0, regs: regs, hi: 0, lo: 0, mem: mem,
+      pipe: { if: EMPTY, id: EMPTY, ex: EMPTY, mem: EMPTY, wb: EMPTY },
+      brCond: 0, brAddr: 0, fwd: { rs: null, rt: null }, stall: false, delayed: null, pendingHalt: null, output: '', fetchSeq: 0, edited: false,
+      halted: false, haltReason: '', haltError: false, stopAt: 0, stopReason: '', outFetch: false,
+      lastPc: null, changed: { regs: [], mem: [], hi: false, lo: false }, events: []
+    };
+  }
+
+  function clone(st) {
+    var c = Object.assign({}, st);
+    c.regs = st.regs.slice();
+    c.mem = new Map(st.mem);
+    c.pipe = Object.assign({}, st.pipe);
+    return c;
+  }
+
+  /**
+   * cfg: { words（assemble() の出力）, startAddress, initRegs[32], initMem[{address,value}], mode: 'seq'|'pipe',
+   *        delaySlot: boolean, loadUse: 'stall'|'delay' }
+   */
+  function createMachine(cfg) {
+    cfg = Object.assign({}, cfg);
+    // 省略（undefined）のときは既定値
+    cfg.mode = cfg.mode === 'pipe' ? 'pipe' : 'seq';
+    if (cfg.startAddress === undefined) cfg.startAddress = 0x00400000;
+    cfg.delaySlot = !!cfg.delaySlot;
+    cfg.loadUse = cfg.loadUse === 'delay' ? 'delay' : 'stall';
+    var programAddrs = new Set(cfg.words.map(function (w) { return w.address >>> 0; }));
+    var hist = [];
+    var st = initialState(cfg);
+    var LIMIT = 5000;
+
+    return {
+      config: cfg,
+      programAddrs: programAddrs,
+      get state() { return st; },
+      get history() { return hist.concat([st]); },
+      reset: function () { st = initialState(cfg); hist = []; },
+      step: function () {
+        if (st.halted) return false;
+        hist.push(st);
+        if (hist.length > LIMIT) hist.shift();
+        st = clone(st);
+        st.changed = { regs: [], mem: [], hi: false, lo: false };
+        st.events = [];
+        st.edited = false;
+        if (cfg.mode === 'pipe') stepPipe(st, cfg); else stepSeq(st, cfg);
+        return true;
+      },
+      // 現在の状態のレジスタ（n = 1〜31）・メモリ（mem = 番地）を書き換える。クロックは進めない
+      edit: function (target, value) {
+        hist.push(st);
+        if (hist.length > LIMIT) hist.shift();
+        st = clone(st);
+        st.changed = { regs: [], mem: [], hi: false, lo: false };
+        st.events = [];
+        st.edited = true;
+        if (target.reg !== undefined) { if (target.reg) { st.regs[target.reg] = value >>> 0; st.changed.regs.push(target.reg); } }
+        else { st.mem.set(target.mem >>> 0, value >>> 0); st.changed.mem.push(target.mem >>> 0); }
+      },
+      back: function () {
+        if (!hist.length) return false;
+        st = hist.pop();
+        return true;
+      }
+    };
+  }
+
+  // メモリ初期値: 「10010000: 1 2 4 3 0」（16進。値は連続した番地に格納）
+  function parseMemInit(text) {
+    var entries = [], errors = [];
+    String(text).split(/\r?\n/).forEach(function (raw, i) {
+      var t = raw.replace(/#.*$/, '').trim();
+      if (!t) return;
+      var m = /^(?:0x)?([0-9a-f]{1,8})\s*:\s*(.*)$/i.exec(t);
+      if (!m) { errors.push({ line: i + 1, message: '「アドレス: 値 値 …」の形式で入力してください' }); return; }
+      var addr = parseInt(m[1], 16);
+      if (addr % 4) { errors.push({ line: i + 1, message: 'アドレスは 4 の倍数にしてください' }); return; }
+      m[2].split(/[\s,]+/).filter(Boolean).forEach(function (v, k) {
+        var mm = /^(?:0x)?([0-9a-f]{1,8})$/i.exec(v);
+        if (!mm) { errors.push({ line: i + 1, message: '16進の値ではありません: ' + v }); return; }
+        entries.push({ address: (addr + 4 * k) >>> 0, value: parseInt(mm[1], 16) >>> 0 });
+      });
+    });
+    return { entries: entries, errors: errors };
+  }
+
+  return {
+    createMachine: createMachine, decode: decode, disasm: disasm, parseMemInit: parseMemInit, hex: hex,
+    DEFAULT_REGS: DEFAULT_REGS, DATA_START: DATA_START
+  };
+})();
+</script>
+
+<script>
+// ===== UI =====
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var src = $('src'), gutter = $('gutter'), startInput = $('start'), startBox = $('startBox');
+  var resultWrap = $('resultWrap'), statusEl = $('status'), msgsEl = $('msgs');
+  var btnCopyHex = $('btnCopyHex'), btnCopyAddr = $('btnCopyAddr'), btnSave = $('btnSave');
+  var STORAGE_KEY = 'mips-asm-source';
+  var SIM_KEY = 'mips-sim-settings';
+  var H = MipsSimulator.hex;
+  var last = null;
+
+  var SAMPLES = {
+    sum: [
+      '# 配列の総和を求めて出力する（0 が終端）',
+      '        .data',
+      'ARRAY:  .word   3, 1, 4, 1, 5, 9, 2, 6, 0',
+      'MSG:    .asciiz "合計 = "',
+      '',
+      '        .text',
+      'MAIN:   LA    $t1, ARRAY         # $t1 = 配列の先頭',
+      '        MOVE  $t0, $zero         # $t0 = 合計',
+      'LOOP:   LW    $t2, 0($t1)        # $t2 = 配列の要素',
+      '        BEQZ  $t2, DONE          # 0 なら終わり',
+      '        ADDU  $t0, $t0, $t2',
+      '        ADDIU $t1, $t1, 4        # 次の要素へ',
+      '        J     LOOP',
+      'DONE:   LA    $a0, MSG',
+      '        LI    $v0, 4             # 文字列を出力',
+      '        SYSCALL',
+      '        MOVE  $a0, $t0',
+      '        LI    $v0, 1             # 整数を出力',
+      '        SYSCALL',
+      '        LI    $v0, 10            # 終了',
+      '        SYSCALL'
+    ],
+    fib: [
+      '# フィボナッチ数列の最初の 10 項を出力する',
+      '        LI    $s0, 10            # 残りの項数',
+      '        LI    $t0, 0             # F(n)',
+      '        LI    $t1, 1             # F(n+1)',
+      'LOOP:   MOVE  $a0, $t0',
+      '        LI    $v0, 1             # 整数を出力',
+      '        SYSCALL',
+      '        LI    $a0, 32            # 空白',
+      '        LI    $v0, 11            # 文字を出力',
+      '        SYSCALL',
+      '        ADDU  $t2, $t0, $t1      # F(n+2) = F(n) + F(n+1)',
+      '        MOVE  $t0, $t1',
+      '        MOVE  $t1, $t2',
+      '        ADDIU $s0, $s0, -1',
+      '        BNE   $s0, $zero, LOOP',
+      '        LI    $v0, 10            # 終了',
+      '        SYSCALL'
+    ],
+    fact: [
+      '# 再帰呼び出しで 5! を求めて出力する（$sp を使ったスタック）',
+      'MAIN:   LI    $a0, 5',
+      '        JAL   FACT               # $v0 = fact(5)',
+      '        MOVE  $a0, $v0',
+      '        LI    $v0, 1             # 整数を出力',
+      '        SYSCALL',
+      '        LI    $v0, 10            # 終了',
+      '        SYSCALL',
+      '',
+      '# int fact(int n) { return n < 2 ? 1 : n * fact(n - 1); }',
+      'FACT:   ADDIU $sp, $sp, -8       # スタックに 2 語確保',
+      '        SW    $ra, 4($sp)        # 戻り番地を退避',
+      '        SW    $a0, 0($sp)        # 引数を退避',
+      '        SLTI  $t0, $a0, 2',
+      '        BEQ   $t0, $zero, REC    # n >= 2 なら再帰',
+      '        LI    $v0, 1',
+      '        ADDIU $sp, $sp, 8',
+      '        JR    $ra',
+      'REC:    ADDIU $a0, $a0, -1',
+      '        JAL   FACT               # $v0 = fact(n - 1)',
+      '        LW    $a0, 0($sp)        # 退避した値を戻す',
+      '        LW    $ra, 4($sp)',
+      '        MUL   $v0, $a0, $v0      # n * fact(n - 1)',
+      '        ADDIU $sp, $sp, 8',
+      '        JR    $ra'
+    ],
+    bsort: [
+      '# バブルソート：配列を昇順に並べ替えて出力する（並べ替えた後は「メモリ」画面でも確認できます）',
+      '        .data',
+      'ARRAY:  .word   5, 2, 8, 1, 9, 3, 7, 4',
+      'N:      .word   8                # 要素数',
+      '',
+      '        .text',
+      'MAIN:   LA    $s0, ARRAY',
+      '        LW    $s1, N',
+      '        ADDIU $s1, $s1, -1       # 外側ループの回数（要素数 - 1）',
+      'OUTER:  MOVE  $t0, $s0           # 比較する位置',
+      '        MOVE  $t1, $s1           # 内側ループの回数',
+      'INNER:  LW    $t2, 0($t0)        # a[i]',
+      '        LW    $t3, 4($t0)        # a[i+1]',
+      '        BLE   $t2, $t3, NEXT     # a[i] <= a[i+1] なら交換しない',
+      '        SW    $t3, 0($t0)        # 交換',
+      '        SW    $t2, 4($t0)',
+      'NEXT:   ADDIU $t0, $t0, 4',
+      '        ADDIU $t1, $t1, -1',
+      '        BNEZ  $t1, INNER',
+      '        ADDIU $s1, $s1, -1',
+      '        BNEZ  $s1, OUTER',
+      '',
+      '# 並べ替えた結果を空白区切りで出力',
+      '        LW    $t1, N',
+      'PRINT:  LW    $a0, 0($s0)',
+      '        LI    $v0, 1             # 整数を出力',
+      '        SYSCALL',
+      "        LI    $a0, ' '",
+      '        LI    $v0, 11            # 文字を出力',
+      '        SYSCALL',
+      '        ADDIU $s0, $s0, 4',
+      '        ADDIU $t1, $t1, -1',
+      '        BNEZ  $t1, PRINT',
+      '        LI    $v0, 10            # 終了',
+      '        SYSCALL'
+    ],
+    hazard: [
+      '# パイプラインのハザード（「パイプライン」画面で 1 クロックずつ確認する）',
+      '# 実行パネルの「遅延分岐」「ロード直後」の設定を変えると動きが変わります',
+      '        LUI   $t0, 0x1001',
+      '        LI    $t1, 7',
+      '        SW    $t1, 0($t0)        # $t1 は直前の結果 → フォワーディング',
+      '        ADDU  $t2, $t1, $t1      # データハザード → フォワーディング',
+      '        LW    $t3, 0($t0)',
+      '        ADDU  $t4, $t3, $t2      # ロード直後に使う → ストール（遅延ロードなら古い値）',
+      '        BEQ   $t4, $t4, SKIP     # 分岐成立 → 次の命令はフラッシュ（遅延分岐なら実行）',
+      '        ADDIU $t5, $zero, 1',
+      'SKIP:   ADDIU $t6, $zero, 2',
+      '        LI    $v0, 10            # 終了',
+      '        SYSCALL'
+    ],
+    pseudo: [
+      '# 擬似命令の例（$at = $1 を使って展開されます）',
+      'LI $t0, 10           # 符号付き 16 ビットに収まる → ADDIU',
+      'LI $t1, 0xBEEF       # 符号なし 16 ビットに収まる → ORI',
+      'LI $t2, 0x12345678   # 収まらない → LUI + ORI',
+      'LA $t3, DATA         # ラベルのアドレス → LUI + ORI',
+      'MOVE $t4, $t0        # → ADDU',
+      'MUL $t5, $t0, $t0    # → MULT + MFLO',
+      'NOT $t6, $t0         # → NOR',
+      'LOOP: ADDIU $t0, $t0, -1',
+      'BGT $t0, $zero, LOOP # → SLT + BNE',
+      'BEQZ $t0, NEXT       # → BEQ $t0, $0, NEXT',
+      'NEXT: LW $t7, DATA   # ラベルでのロード → LUI + LW',
+      'BEQ $0, $0, +1       # 相対オフセットでの指定（次の 1 命令を飛ばす）',
+      'NOP',
+      'LI $v0, 10',
+      'SYSCALL              # 終了',
+      'DATA: NOP'
+    ]
+  };
+
+  // サンプル読込時に設定する初期値（サンプルはすべて既定の実行方式＝遅延分岐なし・ストールを前提に書いている）
+  var SAMPLE_SIM = {
+    hazard: { mode: 'pipe' }
+  };
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+  }
+
+  function fmtHex(h) { return $('split').checked ? h.slice(0, 4) + ' ' + h.slice(4) : h; }
+
+  function parseHex32(t) {
+    t = String(t).trim().replace(/^0x/i, '');
+    return /^[0-9a-f]{1,8}$/i.test(t) ? parseInt(t, 16) >>> 0 : null;
+  }
+
+  function parseStart() {
+    var v = parseHex32(startInput.value);
+    return v !== null && v % 4 === 0 ? v : null;
+  }
+
+  // ---- gutter ----
+  var lineMarks = {};
+  var curLines = {};
+  var hlLine = 0;
+  function renderGutter() {
+    var n = src.value.split('\n').length;
+    var html = '';
+    for (var i = 1; i <= n; i++) {
+      var cls = i === hlLine ? 'hl' : (lineMarks[i] || '');
+      if (curLines[i] && cls !== 'hl') cls = (cls + ' cur').trim();
+      html += '<div' + (cls ? ' class="' + cls + '"' : '') + '>' + i + '</div>';
+    }
+    gutter.innerHTML = html;
+    gutter.scrollTop = src.scrollTop;
+  }
+  src.addEventListener('scroll', function () { gutter.scrollTop = src.scrollTop; });
+
+  function gotoLine(line) {
+    var lines = src.value.split('\n');
+    var pos = 0;
+    for (var i = 0; i < line - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+    src.focus();
+    src.setSelectionRange(pos, pos + (lines[line - 1] || '').length);
+    var lh = parseFloat(getComputedStyle(src).lineHeight) || 21;
+    src.scrollTop = Math.max(0, (line - 1) * lh - src.clientHeight / 3);
+  }
+
+  function setHighlight(line) {
+    if (hlLine === line) return;
+    hlLine = line;
+    renderGutter();
+  }
+
+  // ---- assemble & render ----
+  function run() {
+    var start = parseStart();
+    startBox.classList.toggle('invalid', start === null);
+    if (start === null) {
+      statusEl.innerHTML = '<span class="e">開始アドレスが不正です（16進 8 桁以内・4 の倍数）</span>';
+      last = null;
+      buildMachine();
+      return;
+    }
+    var res = MipsAssembler.assemble(src.value, { startAddress: start });
+    last = res;
+
+    lineMarks = {};
+    res.warnings.forEach(function (w) { lineMarks[w.line] = 'warn'; });
+    res.errors.forEach(function (e) { lineMarks[e.line] = 'err'; });
+
+    renderTable(res);
+    renderMessages(res);
+    renderLabels(res);
+
+    var instCount = 0, seen = {};
+    res.words.forEach(function (w) { if (!seen[w.line]) { seen[w.line] = 1; instCount++; } });
+    var s = '<span>' + instCount + ' 命令 / ' + res.words.length + ' 語' + (res.dataBytes ? ' / データ ' + res.dataBytes + ' バイト' : '') + '</span>';
+    if (res.errors.length) s += '<span class="e">エラー ' + res.errors.length + '</span>';
+    if (res.warnings.length) s += '<span class="w">警告 ' + res.warnings.length + '</span>';
+    if (!res.errors.length && res.words.length) s += '<span class="ok">✓ 変換成功</span>';
+    statusEl.innerHTML = s;
+
+    var has = res.words.length > 0;
+    btnCopyHex.disabled = btnCopyAddr.disabled = btnSave.disabled = !has;
+    buildMachine();
+    builderRefresh();
+  }
+
+  function renderFields(fields) {
+    return '<span class="fields">' + fields.map(function (f) {
+      var bits = f[2].toString(2).padStart(f[1], '0');
+      return '<span class="f ' + f[0] + '" title="' + f[0] + ' = ' + f[2] + ' (0x' + f[2].toString(16).toUpperCase() + ')">' +
+        '<b>' + bits + '</b><i>' + f[0] + (f[0] === 'op' || f[0] === 'funct' ? '' : ' ' + f[2]) + '</i></span>';
+    }).join('') + '</span>';
+  }
+
+  function renderTable(res) {
+    if (!res.words.length) {
+      resultWrap.innerHTML = '<div class="empty">' + (src.value.trim()
+        ? '変換できる命令がありません。左下のエラーを確認してください。'
+        : '左にアセンブリを入力すると、ここに機械語が表示されます。') + '</div>';
+      return;
+    }
+    var labelAt = {};
+    res.labels.forEach(function (l) { (labelAt[l.address] = labelAt[l.address] || []).push(l.name); });
+
+    var h = '<table class="code-table"><thead><tr><th title="クリックでブレークポイント"></th><th>アドレス</th><th>機械語</th><th>形式</th><th>フィールド</th><th>命令</th><th>飛び先</th></tr></thead><tbody>';
+    res.words.forEach(function (w) {
+      if (w.pseudo && w.index === 0) {
+        h += '<tr class="group" data-line="' + w.line + '"><td colspan="7">' + esc(w.source) +
+          '<span class="badge pseudo">擬似命令 → ' + w.count + ' 語</span></td></tr>';
+      }
+      var labs = w.index === 0 && labelAt[w.address] ? labelAt[w.address].map(function (n) {
+        return '<span class="label-chip">' + esc(n) + ':</span>';
+      }).join('') : '';
+      h += '<tr class="word' + (w.pseudo ? ' in-group' : '') + '" data-line="' + w.line + '" data-addr="' + w.address + '">' +
+        '<td class="mk" title="クリックでブレークポイント"></td>' +
+        '<td class="addr">' + fmtHex(H(w.address)) + '</td>' +
+        '<td class="hex">' + fmtHex(w.hex) + '</td>' +
+        '<td><span class="badge ' + w.format + '">' + w.format + '</span></td>' +
+        '<td>' + renderFields(w.fields) + '</td>' +
+        '<td class="asm">' + labs + esc(w.asm) + '</td>' +
+        '<td class="note">' + esc(w.note) + '</td></tr>';
+    });
+    // .data の内容（ワード単位）
+    if (res.data.length) {
+      h += '<tr class="data-head"><td colspan="7">データ（.data）— ' + res.dataBytes + ' バイト</td></tr>';
+      var prevLine = 0;
+      res.data.forEach(function (w) {
+        var labs = (labelAt[w.address] || []).map(function (n) { return '<span class="label-chip">' + esc(n) + ':</span>'; }).join('');
+        h += '<tr class="data" data-line="' + w.line + '"><td></td>' +
+          '<td class="addr">' + fmtHex(H(w.address)) + '</td>' +
+          '<td class="hex">' + fmtHex(w.hex) + '</td><td></td><td></td>' +
+          '<td class="asm">' + labs + (w.line !== prevLine ? esc(w.source) : '') + '</td><td></td></tr>';
+        prevLine = w.line;
+      });
+    }
+    h += '</tbody></table>';
+    var scroll = resultWrap.scrollTop;
+    resultWrap.innerHTML = h;
+    resultWrap.scrollTop = scroll;
+  }
+
+  function renderMessages(res) {
+    var all = res.errors.map(function (e) { return { cls: 'err', line: e.line, message: e.message, kind: 'エラー' }; })
+      .concat(res.warnings.map(function (w) { return { cls: 'warn', line: w.line, message: w.message, kind: '警告' }; }))
+      .sort(function (a, b) { return a.line - b.line; });
+    if (!all.length) { msgsEl.innerHTML = '<li class="none">なし</li>'; return; }
+    msgsEl.innerHTML = all.map(function (m) {
+      return '<li class="' + m.cls + '" data-line="' + m.line + '"><span class="ln">' + m.line + ' 行</span><span>' +
+        m.kind + '：' + esc(m.message) + '</span></li>';
+    }).join('');
+  }
+
+  function renderLabels(res) {
+    $('bLabels').innerHTML = res.labels.map(function (l) {
+      return '<option value="' + esc(l.name) + '">' + H(l.address) + '</option>';
+    }).join('');
+  }
+
+  // ---- output ----
+  // 16進のみ = 命令だけ（命令メモリの内容）。アドレス付き = 命令と .data
+  function outputText(withAddr) {
+    var lines = last.words.map(function (w) {
+      return withAddr ? H(w.address) + ': ' + w.hex + '    # ' + w.asm : w.hex;
+    });
+    if (withAddr && last.data.length) {
+      lines.push('# .data');
+      last.data.forEach(function (w) { lines.push(H(w.address) + ': ' + w.hex); });
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(function () { t.classList.remove('show'); }, 1800);
+  }
+
+  function copy(text) {
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      toast(ok ? 'コピーしました' : 'コピーできませんでした');
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { toast('コピーしました'); }, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  // ===== シミュレータ =====
+  var REGN = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3', 't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
+    's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra'];
+  var STAGES = ['if', 'id', 'ex', 'mem', 'wb'];
+  var TABS = ['code', 'regs', 'mem', 'pipe', 'obs', 'out', 'log'];
+  var machine = null;
+  var simMode = 'seq';
+  var delaySlot = false;    // 遅延分岐
+  var loadUse = 'stall';    // ロード直後の依存: 'stall' | 'delay'
+  function defaultRegs() {
+    var r = new Array(32).fill(0);
+    Object.keys(MipsSimulator.DEFAULT_REGS).forEach(function (k) { r[k] = MipsSimulator.DEFAULT_REGS[k]; });
+    return r;
+  }
+  var initRegs = defaultRegs();
+  var breakpoints = new Set();
+  var runTimer = null;
+  var simNote = '';
+  var adr = MipsSimulator.DATA_START;   // メモリ画面で表示する番地
+  var dispAsm = false;      // メモリ画面をアセンブリで表示するか
+  var obsView = 'diagram';  // 履歴の表示: 'diagram'（パイプライン図）| 'values'（値の変化）
+  var tab = 'code';
+
+  // パイプラインレジスタ（名前は Patterson & Hennessy の表記に合わせる）: [名前, 値, 説明]
+  var IREGS = [
+    ['PC', function (s) { return s.pc; }, '次にフェッチする番地'],
+    ['IF/ID.PC', function (s) { return s.pipe.if.pc; }, 'IF でフェッチした命令の番地'],
+    ['IF/ID.IR', function (s) { return s.pipe.if.ir; }, 'IF でフェッチした命令'],
+    ['ID/EX.PC', function (s) { return s.pipe.id.pc; }, 'ID で解読した命令の番地'],
+    ['ID/EX.IR', function (s) { return s.pipe.id.ir; }, 'ID で解読した命令'],
+    ['ID/EX.A', function (s) { return s.pipe.id.rs; }, 'rs の値（フォワーディング後）'],
+    ['ID/EX.B', function (s) { return s.pipe.id.rt; }, 'rt の値（フォワーディング後）'],
+    ['EX/MEM.PC', function (s) { return s.pipe.ex.pc; }, 'EX で実行した命令の番地'],
+    ['EX/MEM.IR', function (s) { return s.pipe.ex.ir; }, 'EX で実行した命令'],
+    ['EX/MEM.ALUOut', function (s) { return s.pipe.ex.c; }, 'ALU の結果（ロード・ストアでは番地）'],
+    ['EX/MEM.B', function (s) { return s.pipe.ex.smd; }, 'ストアで書き込む値'],
+    ['MEM/WB.PC', function (s) { return s.pipe.mem.pc; }, 'MEM を終えた命令の番地'],
+    ['MEM/WB.IR', function (s) { return s.pipe.mem.ir; }, 'MEM を終えた命令'],
+    ['MEM/WB.Result', function (s) { return s.pipe.mem.c; }, 'レジスタに書き戻す値（ロードなら読んだ値）'],
+    ['HI', function (s) { return s.hi; }, '乗算の上位 / 除算の余り'],
+    ['LO', function (s) { return s.lo; }, '乗算の下位 / 除算の商'],
+    ['Branch.Taken', function (s) { return s.brCond; }, 'ID で分岐が成立したら 1'],
+    ['Branch.Target', function (s) { return s.brAddr; }, '分岐・ジャンプの飛び先']
+  ];
+
+  // 履歴（値の変化）の行（パイプラインモード）
+  var OBS_PIPE = ['PC', 'IF/ID.PC', 'ID/EX.PC', 'EX/MEM.PC', 'MEM/WB.PC', 'ID/EX.A', 'ID/EX.B', 'EX/MEM.ALUOut', 'MEM/WB.Result'].map(iregRow);
+  var OBS_PIPE_ALL = ['IF/ID.IR', 'ID/EX.IR', 'EX/MEM.IR', 'MEM/WB.IR', 'EX/MEM.B', 'Branch.Taken', 'Branch.Target', 'HI', 'LO'].map(iregRow);
+  function iregRow(name) {
+    for (var i = 0; i < IREGS.length; i++) if (IREGS[i][0] === name) return IREGS[i];
+    throw new Error(name);
+  }
+
+  function loadSim() {
+    try {
+      var o = JSON.parse(localStorage.getItem(SIM_KEY) || 'null');
+      if (!o) return false;
+      if (o.mode === 'seq' || o.mode === 'pipe') simMode = o.mode;
+      delaySlot = !!o.delaySlot;
+      if (o.loadUse === 'stall' || o.loadUse === 'delay') loadUse = o.loadUse;
+      if (Array.isArray(o.regs) && o.regs.length === 32) initRegs = o.regs.map(function (v) { return v >>> 0; });
+      if (typeof o.mem === 'string') $('memInit').value = o.mem;
+      if (TABS.indexOf(o.tab) >= 0) tab = o.tab;
+      if (typeof o.adr === 'number') adr = (o.adr & ~3) >>> 0;
+      dispAsm = !!o.dispAsm;
+      if (o.obsView === 'diagram' || o.obsView === 'values') obsView = o.obsView;
+      return true;
+    } catch (e) { return false; }
+  }
+  function saveSim() {
+    try {
+      localStorage.setItem(SIM_KEY, JSON.stringify({
+        mode: simMode, delaySlot: delaySlot, loadUse: loadUse, regs: initRegs, mem: $('memInit').value, tab: tab, adr: adr, dispAsm: dispAsm, obsView: obsView
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function applySamplePreset(key) {
+    var p = SAMPLE_SIM[key] || {};
+    simMode = p.mode || 'seq';
+    delaySlot = false;
+    loadUse = 'stall';
+    initRegs = defaultRegs();
+    Object.keys(p.regs || {}).forEach(function (k) { initRegs[k] = p.regs[k] >>> 0; });
+    $('memInit').value = p.mem || '';
+    adr = p.mem ? parseHex32(p.mem.split(':')[0]) : MipsSimulator.DATA_START;
+    saveSim();
+  }
+
+  function decodeAt(st, addr) {
+    if (!st.mem.has(addr)) return null;
+    return MipsSimulator.decode(st.mem.get(addr) >>> 0);
+  }
+
+  function buildMachine() {
+    stopRun();
+    simNote = '';
+    var parsed = MipsSimulator.parseMemInit($('memInit').value);
+    $('memErr').textContent = parsed.errors.map(function (e) { return e.line + ' 行: ' + e.message; }).join(' / ');
+    var ok = !!(last && !last.errors.length && last.words.length);
+    // メモリの初期値 = .data の内容 + 追加の初期値（後のほうが優先）
+    var initMem = ok ? last.data.map(function (w) { return { address: w.address, value: w.value }; }).concat(parsed.entries) : [];
+    machine = ok ? MipsSimulator.createMachine({
+      words: last.words, startAddress: parseStart(), initRegs: initRegs, initMem: initMem, mode: simMode,
+      delaySlot: delaySlot, loadUse: loadUse
+    }) : null;
+    renderSim();
+  }
+
+  function atReset() { return machine && machine.state.cycle === 0 && !runTimer; }
+
+  function fmtVal(v) { return $('regDec').checked ? String(v | 0) : H(v); }
+
+  function buildStaticUi() {
+    var h = '';
+    for (var i = 0; i < 32; i++) {
+      h += '<label class="reg" id="reg' + i + '">' +
+        '<span class="rn">$' + i + '</span><span class="ra">' + REGN[i] + '</span>' +
+        '<input data-reg="' + i + '" spellcheck="false" autocomplete="off"></label>';
+    }
+    ['HI', 'LO'].forEach(function (n) {
+      h += '<label class="reg" id="reg' + n + '"><span class="rn">' + n + '</span><span class="ra"></span><input readonly tabindex="-1"></label>';
+    });
+    $('regs').innerHTML = h;
+  }
+
+  // ---- 描画 ----
+  function renderBoard() {
+    [].forEach.call($('modeSeg').querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-mode') === simMode);
+    });
+    $('simRun').textContent = runTimer ? '■ 停止' : '▶ 実行';
+    $('simRun').classList.toggle('on', !!runTimer);
+    $('clkKey').textContent = simMode === 'pipe' ? 'クロック' : '命令';
+    $('optDelaySlot').checked = delaySlot;
+    $('optLoadUse').value = loadUse;
+    $('optLoadUse').disabled = simMode !== 'pipe';
+    $('optLoadUseNote').hidden = simMode === 'pipe';
+    // 既定と違う設定だけを「⚙ 設定」の横に表示する
+    var sum = [];
+    if (delaySlot) sum.push('遅延分岐');
+    if (simMode === 'pipe' && loadUse === 'delay') sum.push('遅延ロード');
+    $('optSum').textContent = sum.join('・');
+    if (document.activeElement !== $('memAdr')) $('memAdr').value = H(adr);
+    $('memAsm').checked = dispAsm;
+
+    var m = machine, st = m && m.state;
+    $('simReset').disabled = !m || !!runTimer;
+    $('simBack').disabled = !m || !!runTimer || m.history.length <= 1;
+    $('simStep').disabled = !m || !!runTimer || st.halted;
+    $('simRun').disabled = !m || (!runTimer && st.halted);
+    if (!m) {
+      $('dispClk').textContent = '-';
+      $('dispPc').textContent = '--------';
+      $('boardMsg').innerHTML = last && last.errors.length ? 'アセンブルのエラーを修正すると実行できます。'
+        : !last ? '開始アドレスを修正すると実行できます。' : 'プログラムを入力すると実行できます。';
+      return;
+    }
+    $('dispClk').textContent = String(st.cycle);
+    $('dispPc').textContent = H(st.pc);
+
+    // 逐次モードでは完了した命令数 = 実行した命令数なので、パイプラインモードのときだけ表示
+    var h = simMode === 'pipe' ? '<span>完了した命令 <b>' + st.count + '</b></span>' : '';
+    if (st.halted) h += '<span class="halt' + (st.haltError ? ' error' : '') + '">■ ' + esc(st.haltReason) + '</span>';
+    else if (simNote) h += '<span class="note">' + esc(simNote) + '</span>';
+    else if (st.edited) h += '<span>値を書き換えました（◀ で取り消せます）</span>';
+    else if (st.cycle === 0) h += '<span>クロック 0：レジスタ・メモリの値を書き換えると初期値として保存されます</span>';
+    $('boardMsg').innerHTML = h;
+  }
+
+  // 値の入力欄の説明（クロック 0 は初期値、それ以降は今の値を書き換える）
+  function editTip(what) {
+    if (runTimer) return '実行中は書き換えできません';
+    return atReset() ? 'クリックして' + what + 'の初期値を入力' : 'クリックして' + what + 'の今の値を書き換え（◀ で取り消し）';
+  }
+
+  function renderRegs(st) {
+    var editable = !runTimer;
+    var changed = new Set(st.changed.regs);
+    for (var i = 0; i < 32; i++) {
+      var el = $('reg' + i), inp = el.querySelector('input');
+      if (document.activeElement !== inp) inp.value = fmtVal(st.regs[i]);
+      inp.readOnly = !editable || i === 0;
+      inp.title = i === 0 ? '$0 は常に 0' : editTip('レジスタ');
+      el.classList.toggle('changed', changed.has(i));
+      el.classList.toggle('zero', st.regs[i] === 0);
+    }
+    [['HI', st.hi, st.changed.hi], ['LO', st.lo, st.changed.lo]].forEach(function (r) {
+      var el = $('reg' + r[0]);
+      el.querySelector('input').value = fmtVal(r[1]);
+      el.classList.toggle('changed', !!r[2]);
+    });
+  }
+
+  function memRows(st, list, opts) {
+    var changed = new Set(st.changed.mem);
+    var editable = !runTimer;
+    var pcs = stageAddrs(st);
+    var showAsm = dispAsm && !opts.noAsm;   // データ一覧ではアセンブリ列を出さない
+    return list.map(function (a) {
+      var v = (st.mem.get(a) || 0) >>> 0, cls = [];
+      if (changed.has(a)) cls.push('changed');
+      if (opts.markAdr && a === adr) cls.push('adr');
+      if (pcs[a]) cls.push('pc');
+      var dec = st.mem.has(a) ? String(v | 0) : '';
+      var x = '';
+      if (showAsm) {
+        var d = decodeAt(st, a);
+        x = d ? MipsSimulator.disasm(d, a) : '';
+      }
+      var mark = pcs[a] ? '◀ ' + pcs[a].join(' ') : '';
+      var inProg = machine.programAddrs.has(a);
+      var tip = inProg ? 'プログラム領域です（命令はエディタで編集します）' : editTip('メモリ') + '（16進、Enter で次の番地へ）';
+      return '<tr data-adr="' + a + '"' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '><td class="a">' + H(a) +
+        '</td><td class="v"><span class="px">0x</span><input class="mv" data-adr="' + a + '" value="' + H(v) + '" maxlength="10" spellcheck="false" autocomplete="off" title="' + tip + '"' +
+        (editable && !inProg ? '' : ' readonly tabindex="-1"') + '></td><td class="d">' + dec + '</td>' +
+        (showAsm ? '<td class="x">' + esc(x) + '</td>' : '') +
+        '<td class="x">' + mark + '</td></tr>';
+    }).join('');
+  }
+
+  function renderMem(st) {
+    var headOf = function (asm) { return '<thead><tr><th>アドレス</th><th>16進</th><th class="d">10進</th>' + (asm ? '<th>アセンブリ</th>' : '') + '<th></th></tr></thead>'; };
+    var head = headOf(dispAsm);
+    var start = Math.max(0, adr - 16), list = [];
+    for (var i = 0; i < 32; i++) list.push((start + 4 * i) >>> 0);
+    $('memView').innerHTML = head + '<tbody>' + memRows(st, list, { markAdr: true }) + '</tbody>';
+
+    var prog = machine.programAddrs, data = [];
+    st.mem.forEach(function (_, a) { if (!prog.has(a)) data.push(a); });
+    data.sort(function (a, b) { return a - b; });
+    $('memData').innerHTML = data.length
+      ? headOf(false) + '<tbody>' + memRows(st, data.slice(0, 1000), { noAsm: true }) + '</tbody>'
+      : '<tr><td style="color:var(--muted);font-family:inherit;white-space:normal">なし（.data・初期値の入力・ストア命令で書き込まれると表示されます）</td></tr>';
+  }
+
+  function renderPipe(st, prev) {
+    $('pipeOff').hidden = simMode === 'pipe';
+    $('pipeOn').hidden = simMode !== 'pipe';
+    if (simMode !== 'pipe') return;
+    var P = st.pipe;
+    $('pipeStages').innerHTML = STAGES.map(function (k) {
+      var L = P[k], tags = '';
+      var empty = st.cycle === 0 || (!L.valid && L.pc === 0 && !L.bubble);
+      var body = empty ? '（空）'
+        : L.bubble === 'stall' ? '（バブル）'
+        : L.bubble === 'flush' ? '（フラッシュ）' + esc(MipsSimulator.disasm(MipsSimulator.decode(L.ir), L.pc))
+        : esc(MipsSimulator.disasm(L.d, L.pc));
+      if (L.bubble === 'stall') tags += '<span class="tag">ストール</span>';
+      if (L.bubble === 'flush') tags += '<span class="tag">分岐成立で破棄</span>';
+      if (!empty && !L.valid && !L.bubble) tags += '<span class="tag">プログラム外</span>';
+      if (k === 'if' && st.stall) tags += '<span class="tag">ストール中（保持）</span>';
+      if (!empty && L.slot) tags += '<span class="tag">遅延スロット</span>';
+      if (k === 'id' && !empty) {
+        if (st.fwd.rs) tags += '<span class="tag fwd">rs ← ' + st.fwd.rs + '</span>';
+        if (st.fwd.rt) tags += '<span class="tag fwd">rt ← ' + st.fwd.rt + '</span>';
+        if (st.brCond) tags += '<span class="tag fwd">分岐成立 → ' + H(st.brAddr) + '</span>';
+      }
+      return '<div class="stage' + (empty ? ' empty' : '') + '"><div class="sn">' + k.toUpperCase() + '</div>' +
+        '<div class="si">' + body + '</div>' + tags + '</div>';
+    }).join('');
+    $('iregs').innerHTML = IREGS.map(function (r) {
+      var v = r[1](st), cls = [];
+      if (prev && r[1](prev) !== v) cls.push('changed');
+      return '<div title="' + esc(r[2]) + '"' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '><span class="nm">' + r[0] + '</span><span>' + H(v) + '</span></div>';
+    }).join('');
+    $('pipeAssume').textContent = '設定：' +
+      (delaySlot ? '遅延分岐あり（分岐の直後の命令を常に実行、JAL は $ra = PC+8）' : '遅延分岐なし（分岐成立時はフェッチ済みの命令をフラッシュ、JAL は $ra = PC+4）') + '。' +
+      (loadUse === 'stall' ? 'ロード直後の依存は 1 クロックストール' : 'ロード直後の依存は遅延ロード（古い値を読む）') +
+      '。分岐は ID で判定。メモリはビッグエンディアン。';
+  }
+
+  function obsRows(hist) {
+    var rows;
+    if (simMode === 'pipe') {
+      rows = OBS_PIPE.slice();
+      if ($('obsAll').checked) rows = rows.concat(OBS_PIPE_ALL);
+    } else {
+      rows = [['PC', function (s) { return s.pc; }]];
+    }
+    var regs = new Set(), mems = new Set(), hilo = false;
+    hist.forEach(function (s) {
+      s.changed.regs.forEach(function (n) { regs.add(n); });
+      s.changed.mem.forEach(function (a) { mems.add(a); });
+      if (s.changed.hi || s.changed.lo) hilo = true;
+    });
+    Array.from(regs).sort(function (a, b) { return a - b; }).forEach(function (n) {
+      rows.push(['$' + n, function (s) { return s.regs[n]; }]);
+    });
+    if (hilo && !(simMode === 'pipe' && $('obsAll').checked)) {
+      rows.push(['HI', function (s) { return s.hi; }], ['LO', function (s) { return s.lo; }]);
+    }
+    Array.from(mems).sort(function (a, b) { return a - b; }).forEach(function (a) {
+      rows.push(['M[' + H(a) + ']', function (s) { return (s.mem.get(a) || 0) >>> 0; }]);
+    });
+    return rows;
+  }
+
+  function colName(s) {
+    if (s.cycle === 0 && !s.edited) return '初期値';
+    return s.cycle + (simMode === 'pipe' ? ' クロック' : ' 命令') + (s.edited ? '（書換）' : '');
+  }
+
+  // パイプライン図のデータ: 各クロックで、各命令（フェッチの通し番号ごと）がどのステージにいたか
+  // 各クロックの状態の pipe.if〜wb は「そのクロックに IF〜WB で処理した命令」を表す
+  function diagramData(hist) {
+    var rows = new Map(), cols = [], prev = null;
+    hist.forEach(function (s) {
+      var P = s.pipe;
+      var same = prev && P.if === prev.pipe.if && P.id === prev.pipe.id && P.ex === prev.pipe.ex && P.mem === prev.pipe.mem && P.wb === prev.pipe.wb;
+      var skip = s.cycle === 0 || s.edited || (prev && s.cycle === prev.cycle) || same;
+      prev = s;
+      if (skip) return;
+      var k = s.cycle;
+      cols.push(k);
+      var put = function (L, stage, extra) {
+        if (!L.seq || L.bubble === 'stall') return;
+        if (!L.valid && !L.bubble) return;   // プログラムの外（終端の空フェッチ）
+        var r = rows.get(L.seq);
+        if (!r) { r = { seq: L.seq, pc: L.pc, ir: L.ir, cells: {}, flushed: false }; rows.set(L.seq, r); }
+        r.cells[k] = Object.assign({ st: stage }, extra || {});
+        if (extra && extra.flush) r.flushed = true;
+      };
+      // ストール中は IF/ID の命令が ID で止まっている
+      if (s.stall) put(P.if, 'ID', { stall: true });
+      else put(P.if, 'IF', P.if.bubble === 'flush' ? { flush: true } : null);
+      put(P.id, 'ID', { fwd: s.fwd });
+      put(P.ex, 'EX');
+      put(P.mem, 'MEM');
+      put(P.wb, 'WB');
+    });
+    return { rows: Array.from(rows.values()).sort(function (a, b) { return a.seq - b.seq; }), cols: cols };
+  }
+
+  function cellText(c) {
+    if (c.flush) return 'IF（破棄）';
+    if (c.stall) return 'ID（ストール）';
+    var f = c.fwd ? [c.fwd.rs, c.fwd.rt].filter(Boolean) : [];
+    return c.st + (f.length ? '（←' + f.join('/') + '）' : '');
+  }
+
+  function cellHtml(c) {
+    if (c.flush) return '<span class="pd-c st-flush" title="フェッチしたが、分岐が成立したので破棄">IF<small>破棄</small></span>';
+    if (c.stall) return '<span class="pd-c st-stall" title="直前のロードの結果を待って停止">ID<small>ストール</small></span>';
+    var f = c.fwd ? [c.fwd.rs, c.fwd.rt].filter(Boolean) : [];
+    var uniq = f.filter(function (x, i) { return f.indexOf(x) === i; });
+    return '<span class="pd-c st-' + c.st.toLowerCase() + '"' + (uniq.length ? ' title="フォワーディング: ' + esc(uniq.join(', ')) + ' から受け取る"' : '') + '>' +
+      c.st + (uniq.length ? '<small>←' + uniq.join('/') + '</small>' : '') + '</span>';
+  }
+
+  function insText(r) { return MipsSimulator.disasm(MipsSimulator.decode(r.ir), r.pc); }
+
+  function renderDiagram() {
+    var data = diagramData(machine.history);
+    var wrap = $('obsWrap');
+    if (!data.cols.length) {
+      wrap.innerHTML = '<div class="pd-note">ステップを進めると、命令ごとのパイプラインの進み方がここに表示されます。</div>';
+      return;
+    }
+    var cols = data.cols.slice(-40), first = cols[0], now = cols[cols.length - 1];
+    var rows = data.rows.filter(function (r) { return cols.some(function (k) { return r.cells[k]; }); }).slice(-60);
+    var h = '<table class="pd"><thead><tr><th class="ins">命令</th>' + cols.map(function (k) {
+      return '<th' + (k === now ? ' class="now"' : '') + '>' + k + '</th>';
+    }).join('') + '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      h += '<tr' + (r.flushed ? ' class="flushed"' : '') + '><td class="ins"><span class="a">' + H(r.pc) + '</span>' + esc(insText(r)) + '</td>';
+      cols.forEach(function (k) {
+        var c = r.cells[k];
+        h += '<td' + (k === now ? ' class="now"' : '') + '>' + (c ? cellHtml(c) : '') + '</td>';
+      });
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+    if (first > 1) h += '<div class="pd-note">直近の 40 クロックを表示しています（「表をコピー」ではすべてのクロックをコピーします）。</div>';
+    wrap.innerHTML = h;
+    wrap.scrollLeft = wrap.scrollWidth;
+  }
+
+  function renderValues() {
+    var hist = machine.history;
+    var cols = hist.slice(Math.max(0, hist.length - 300));
+    var rows = obsRows(hist);
+    var h = '<table class="obs"><thead><tr><th>レジスタ</th>' + cols.map(function (s) { return '<th>' + colName(s) + '</th>'; }).join('') + '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      h += '<tr><td>' + esc(r[0]) + '</td>';
+      cols.forEach(function (s, i) {
+        var v = r[1](s), cls = [];
+        if (i > 0 && r[1](cols[i - 1]) !== v) cls.push('diff');
+        if (i === cols.length - 1) cls.push('last');
+        h += '<td' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' + H(v) + '</td>';
+      });
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+    var wrap = $('obsWrap');
+    wrap.innerHTML = h;
+    wrap.scrollLeft = wrap.scrollWidth;
+  }
+
+  // 逐次モードではパイプライン図はないので、値の変化を表示する
+  function curObsView() { return simMode === 'pipe' ? obsView : 'values'; }
+
+  function renderObs() {
+    var view = curObsView();
+    [].forEach.call($('obsView').querySelectorAll('button'), function (b) {
+      var v = b.getAttribute('data-v');
+      b.classList.toggle('on', v === view);
+      if (v === 'diagram') {
+        b.disabled = simMode !== 'pipe';
+        b.title = simMode === 'pipe' ? '命令ごとに、各クロックでどのステージにいたかを表示' : 'パイプラインのときに使えます';
+      }
+    });
+    $('obsAllWrap').hidden = !(simMode === 'pipe' && view === 'values');
+    $('obsSub').textContent = view === 'diagram' ? '行 = 命令、列 = クロック' : '行 = レジスタ、列 = 初期値・各' + (simMode === 'pipe' ? 'クロック' : '命令');
+    if (view === 'diagram') renderDiagram(); else renderValues();
+  }
+
+  function obsTsv() {
+    var hist = machine.history, lines;
+    if (curObsView() === 'diagram') {
+      var data = diagramData(hist);
+      lines = [['命令'].concat(data.cols).join('\t')];
+      data.rows.forEach(function (r) {
+        lines.push([H(r.pc) + ' ' + insText(r)].concat(data.cols.map(function (k) { return r.cells[k] ? cellText(r.cells[k]) : ''; })).join('\t'));
+      });
+    } else {
+      var rows = obsRows(hist);
+      lines = [['レジスタ'].concat(hist.map(colName)).join('\t')];
+      rows.forEach(function (r) {
+        lines.push([r[0]].concat(hist.map(function (s) { return H(r[1](s)); })).join('\t'));
+      });
+    }
+    return lines.join('\n') + '\n';
+  }
+
+  function logItems() {
+    var items = [];
+    machine.history.forEach(function (s) {
+      s.events.forEach(function (e) { items.push({ c: s.cycle, kind: e.kind, msg: e.msg }); });
+    });
+    return items;
+  }
+
+  function renderOutput() {
+    var out = machine.state.output;
+    $('outCnt').hidden = !out;
+    $('outCnt').textContent = '●';
+    if (tab !== 'out') return;
+    var el = $('simOut');
+    if (el.textContent !== out) {
+      el.textContent = out;
+      el.parentNode.scrollTop = el.parentNode.scrollHeight;
+    }
+  }
+
+  function renderLog() {
+    var items = logItems();
+    var warns = items.filter(function (it) { return it.kind !== 'info'; }).length;
+    $('logCnt').hidden = !warns;
+    $('logCnt').textContent = warns;
+    if (tab !== 'log') return;
+    $('simLog').innerHTML = items.length ? items.slice(-300).map(function (it) {
+      return '<li class="' + it.kind + '"><span class="c">' + it.c + '</span><span>' + esc(it.msg) + '</span></li>';
+    }).join('') : '<li class="none">警告・ストールはありません（停止理由は実行パネルに表示されます）</li>';
+  }
+
+  function stageAddrs(st) {
+    var at = {};
+    if (!st) return at;
+    if (simMode === 'seq') {
+      if (!st.halted || st.mem.has(st.pc)) at[st.pc] = ['PC'];
+    } else if (st.cycle > 0) {
+      STAGES.forEach(function (k) {
+        var L = st.pipe[k];
+        if (L.valid) (at[L.pc] = at[L.pc] || []).push(k.toUpperCase());
+      });
+    }
+    return at;
+  }
+
+  function applyMarkers() {
+    var at = stageAddrs(machine && machine.state);
+    [].forEach.call(resultWrap.querySelectorAll('tr.word'), function (tr) {
+      var a = parseInt(tr.getAttribute('data-addr'), 10);
+      tr.querySelector('td.mk').innerHTML = '<span class="bp' + (breakpoints.has(a) ? ' on' : '') + '"></span>' +
+        (at[a] || []).map(function (n) { return '<span class="st">' + (n === 'PC' ? '▶' : n) + '</span>'; }).join('');
+      tr.classList.toggle('cur', !!at[a]);
+    });
+    curLines = {};
+    if (last) last.words.forEach(function (w) { if (at[w.address]) curLines[w.line] = true; });
+    renderGutter();
+  }
+
+  // 表示中の画面だけ描画し直す（履歴などは重いため）
+  function renderSim() {
+    var m = machine;
+    document.querySelector('.right').classList.toggle('no-sim', !m);
+    renderBoard();
+    applyMarkers();
+    if (!m) { $('logCnt').hidden = true; $('outCnt').hidden = true; return; }
+    var st = m.state, hist = m.history, prev = hist.length > 1 ? hist[hist.length - 2] : null;
+    if (tab === 'regs') renderRegs(st);
+    if (tab === 'mem') renderMem(st);
+    if (tab === 'pipe') renderPipe(st, prev);
+    if (tab === 'obs') renderObs();
+    renderOutput();
+    renderLog();
+  }
+
+  function showTab(name) {
+    if (TABS.indexOf(name) < 0) return;
+    tab = name;
+    [].forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-tab') === name);
+    });
+    [].forEach.call(document.querySelectorAll('.right > .pane'), function (p) {
+      p.hidden = p.getAttribute('data-pane') !== name;
+    });
+    saveSim();
+    renderSim();
+  }
+
+  function setMode(mode) {
+    if (mode === simMode) return;
+    simMode = mode;
+    saveSim();
+    buildMachine();
+    toast(mode === 'pipe' ? 'パイプラインに切り替えました（リセットしました）' : '逐次実行に切り替えました（リセットしました）');
+  }
+
+  function setExecOption(name, value) {
+    if (name === 'delaySlot') delaySlot = value; else loadUse = value;
+    saveSim();
+    buildMachine();
+    toast('実行方式を変更しました（リセットしました）');
+  }
+
+  function setAdr(a) {
+    if (a === null || isNaN(a)) { renderBoard(); return; }
+    adr = (a & ~3) >>> 0;
+    saveSim();
+    renderSim();
+  }
+
+  // ---- 実行制御 ----
+  function hitBreakpoint(st) {
+    if (simMode === 'seq') return breakpoints.has(st.pc) ? st.pc : null;
+    return st.pipe.if.valid && breakpoints.has(st.pipe.if.pc) ? st.pipe.if.pc : null;
+  }
+
+  function stopRun(note) {
+    if (!runTimer) return;
+    clearInterval(runTimer);
+    runTimer = null;
+    if (note) simNote = note;
+  }
+
+  function simReset() {
+    if (!machine) return;
+    stopRun();
+    simNote = '';
+    machine.reset();
+    renderSim();
+  }
+
+  function simStep() {
+    if (!machine || runTimer || machine.state.halted) return;
+    simNote = '';
+    machine.step();
+    renderSim();
+  }
+
+  function simBack() {
+    if (!machine || runTimer) return;
+    simNote = '';
+    machine.back();
+    renderSim();
+  }
+
+  function simRun() {
+    if (runTimer) { stopRun('停止しました'); renderSim(); return; }
+    if (!machine || machine.state.halted) return;
+    var max = Math.max(1, parseInt($('simMax').value, 10) || 1000);
+    var delay = parseInt($('simSpeed').value, 10) || 0;
+    var n = 0;
+    simNote = '';
+    function one() {
+      machine.step();
+      n++;
+      var st = machine.state;
+      if (st.halted) return true;
+      var bp = hitBreakpoint(st);
+      if (bp !== null) { simNote = 'ブレークポイント（0x' + H(bp) + '）で停止しました'; return true; }
+      if (n >= max) { simNote = '最大ステップ数（' + max + '）に達したため停止しました'; return true; }
+      return false;
+    }
+    if (!delay) {
+      while (!one()) { /* run */ }
+      renderSim();
+      return;
+    }
+    runTimer = setInterval(function () {
+      if (one()) stopRun();
+      renderSim();
+    }, delay);
+    renderSim();
+  }
+
+  function toggleBreakpoint(a) {
+    if (breakpoints.has(a)) breakpoints.delete(a); else breakpoints.add(a);
+    applyMarkers();
+  }
+
+  // ---- 書き込み（クロック 0 では初期値として保存。それ以降は今の値だけを書き換え、◀ で取り消せる） ----
+  function writeReg(i, text) {
+    if (!machine || runTimer) { toast('実行中は書き換えできません'); return false; }
+    if (i === 0) { toast('$0 は常に 0 です'); return false; }
+    var t = String(text).trim(), v = null;
+    if ($('regDec').checked) {
+      if (/^-?\d+$/.test(t)) v = parseInt(t, 10);
+    } else {
+      v = parseHex32(t);
+    }
+    if (v === null || v < -0x80000000 || v > 0xFFFFFFFF) {
+      toast('値が不正です（' + ($('regDec').checked ? '10進' : '16進 8 桁以内') + '）');
+      return false;
+    }
+    if (!atReset()) {
+      machine.edit({ reg: i }, v >>> 0);
+      simNote = '';
+      renderSim();
+      return true;
+    }
+    initRegs[i] = v >>> 0;
+    saveSim();
+    buildMachine();
+    return true;
+  }
+
+  // メモリ初期値を「番地: 値 …」の形に整える（連続した番地は 1 行にまとめる）
+  function memText(map) {
+    var addrs = Array.from(map.keys()).sort(function (a, b) { return a - b; });
+    var lines = [], cur = null;
+    addrs.forEach(function (a) {
+      if (cur && a === cur.next && cur.vals.length < 8) {
+        cur.vals.push(map.get(a)); cur.next = a + 4;
+      } else {
+        cur = { addr: a, vals: [map.get(a)], next: a + 4 };
+        lines.push(cur);
+      }
+    });
+    return lines.map(function (l) {
+      return H(l.addr) + ': ' + l.vals.map(function (v) { return (v >>> 0).toString(16).toUpperCase(); }).join(' ');
+    }).join('\n');
+  }
+
+  // メモリの値を書き込む（クロック 0 では初期値の欄に反映される）
+  function writeMem(a, text) {
+    if (!machine || runTimer) { toast('実行中は書き換えできません'); return false; }
+    if (machine.programAddrs.has(a)) { toast('プログラム領域はエディタで編集してください'); return false; }
+    var v = parseHex32(text);
+    if (v === null) { toast('値は 16進 8 桁以内で入力してください（例: 0000000A）'); return false; }
+    if (!atReset()) {
+      machine.edit({ mem: a }, v);
+      simNote = '';
+      renderSim();
+      return true;
+    }
+    var ta = $('memInit');
+    var parsed = MipsSimulator.parseMemInit(ta.value);
+    if (parsed.errors.length) { toast('先に初期値の欄のエラーを直してください'); return false; }
+    if (/#/.test(ta.value)) {
+      // コメントを消さないよう、整形せずに 1 行追記する（後の行が優先される）
+      ta.value = ta.value.replace(/\s*$/, '') + '\n' + H(a) + ': ' + (v >>> 0).toString(16).toUpperCase();
+    } else {
+      var map = new Map();
+      parsed.entries.forEach(function (e) { map.set(e.address, e.value); });
+      if (v === 0) map.delete(a); else map.set(a, v);   // 0 は未設定と同じなので行を減らす
+      ta.value = memText(map);
+    }
+    saveSim();
+    buildMachine();
+    return true;
+  }
+
+  // ===== 入力補助（命令・レジスタをプルダウンで選んで 1 行ずつ入力） =====
+  // 形式ごとの命令（プルダウン内は用途別にまとめる）
+  var B_FORMATS = {
+    R: [['演算', ['ADD', 'ADDU', 'SUB', 'SUBU', 'AND', 'OR', 'XOR', 'NOR', 'SLT', 'SLTU']],
+        ['シフト', ['SLL', 'SRL', 'SRA', 'SLLV', 'SRLV', 'SRAV']],
+        ['乗除算', ['MULT', 'MULTU', 'DIV', 'DIVU', 'MFHI', 'MFLO', 'MTHI', 'MTLO']], ['ジャンプ', ['JR', 'JALR']], ['システム', ['SYSCALL', 'BREAK']]],
+    I: [['即値演算', ['ADDI', 'ADDIU', 'ANDI', 'ORI', 'XORI', 'SLTI', 'SLTIU', 'LUI']],
+        ['メモリ転送', ['LW', 'LH', 'LHU', 'LB', 'LBU', 'SW', 'SH', 'SB']],
+        ['条件分岐', ['BEQ', 'BNE', 'BLEZ', 'BGTZ', 'BLTZ', 'BGEZ', 'BLTZAL', 'BGEZAL']]],
+    J: [['ジャンプ', ['J', 'JAL']]],
+    P: [['擬似命令', ['NOP', 'LI', 'LA', 'MOVE', 'NOT', 'NEG', 'MUL']],
+        ['分岐', ['B', 'BEQZ', 'BNEZ', 'BLT', 'BGE', 'BGT', 'BLE', 'BLTU', 'BGEU', 'BGTU', 'BLEU']]]
+  };
+  var B_NAMES = {
+    ADD: '加算', ADDU: '加算（例外なし）', SUB: '減算', SUBU: '減算（例外なし）', SYSCALL: 'システムコール', BREAK: '停止', AND: '論理積', OR: '論理和', XOR: '排他的論理和', SLT: '比較（<）',
+    SLL: '左シフト', SRL: '右シフト', MULT: '乗算', DIV: '除算', MFHI: 'HI を読む', MFLO: 'LO を読む',
+    MTHI: 'HI に書く', MTLO: 'LO に書く', JR: 'レジスタの番地へ',
+    ADDI: '即値加算', ADDIU: '即値加算（例外なし）', ANDI: '即値論理積', ORI: '即値論理和', XORI: '即値排他的論理和', SLTI: '即値比較（<）',
+    LUI: '上位16bitに即値', LW: 'ワード読込', LB: 'バイト読込', LBU: 'バイト読込（符号なし）',
+    SW: 'ワード書込', SB: 'バイト書込', BEQ: '等しければ分岐', BNE: '異なれば分岐',
+    J: 'ジャンプ', JAL: '関数呼出し',
+    NOP: '何もしない', LI: '定数を代入', LA: 'ラベルの番地を代入', MOVE: 'レジスタ転送', MUL: '乗算',
+    BLT: '< なら分岐', BGE: '>= なら分岐', BGT: '> なら分岐', BLE: '<= なら分岐',
+    NOR: '否定論理和', SLTU: '比較（<、符号なし）', SRA: '算術右シフト', SLLV: '左シフト（量はレジスタ）',
+    SRLV: '右シフト（量はレジスタ）', SRAV: '算術右シフト（量はレジスタ）', MULTU: '乗算（符号なし）', DIVU: '除算（符号なし）',
+    JALR: 'レジスタの番地を呼出し', SLTIU: '即値比較（<、符号なし）', LH: 'ハーフワード読込', LHU: 'ハーフワード読込（符号なし）',
+    SH: 'ハーフワード書込', BLEZ: '0 以下なら分岐', BGTZ: '正なら分岐', BLTZ: '負なら分岐', BGEZ: '0 以上なら分岐',
+    BLTZAL: '負なら関数呼出し', BGEZAL: '0 以上なら関数呼出し', NOT: 'ビット反転', NEG: '符号反転',
+    B: '無条件に分岐', BEQZ: '0 なら分岐', BNEZ: '0 でなければ分岐',
+    BLTU: '< なら分岐（符号なし）', BGEU: '>= なら分岐（符号なし）', BGTU: '> なら分岐（符号なし）', BLEU: '<= なら分岐（符号なし）'
+  };
+  var bFormat = 'R';
+  var bEditLine = -1;   // 「行を読込」で編集中の行（0始まり）。-1 は新規追加
+  var bLastOp = { R: 'ADD', I: 'ADDI', J: 'J', P: 'LI' };
+  function formatOf(mn) {
+    for (var f in B_FORMATS) {
+      if (B_FORMATS[f].some(function (g) { return g[1].indexOf(mn) >= 0; })) return f;
+    }
+    return null;
+  }
+  // オペランドの並び: [種類, 状態のキー, 見出し]
+  var B_KINDS = {
+    R3: [['reg', 'rd', 'rd（結果）'], ['reg', 'rs', 'rs'], ['reg', 'rt', 'rt']],
+    SH: [['reg', 'rd', 'rd（結果）'], ['reg', 'rt', 'rt'], ['num', 'shamt', 'シフト量 0〜31']],
+    I: [['reg', 'rt', 'rt（結果）'], ['reg', 'rs', 'rs'], ['num', 'imm', '即値']],
+    LUI: [['reg', 'rt', 'rt（結果）'], ['num', 'imm', '即値（上位16bit）']],
+    LD: [['reg', 'rt', 'rt（読込先）'], ['mem', 'mem', '番地 = offset + rs']],
+    ST: [['reg', 'rt', 'rt（書き込む値）'], ['mem', 'mem', '番地 = offset + rs']],
+    BR: [['reg', 'rs', 'rs'], ['reg', 'rt', 'rt'], ['target', 'target', '飛び先']],
+    J: [['target', 'target', '飛び先']],
+    JR: [['reg', 'rs', 'rs（飛び先の番地）']],
+    MD: [['reg', 'rs', 'rs'], ['reg', 'rt', 'rt']],
+    MF: [['reg', 'rd', 'rd（結果）']],
+    MT: [['reg', 'rs', 'rs']],
+    NOP: [],
+    LI: [['reg', 'rd', 'rd（結果）'], ['num', 'n32', '値（32bit まで）']],
+    LA: [['reg', 'rd', 'rd（結果）'], ['label', 'label', 'ラベル']],
+    MOVE: [['reg', 'rd', 'rd（結果）'], ['reg', 'rs', 'rs']],
+    SV: [['reg', 'rd', 'rd（結果）'], ['reg', 'rt', 'rt'], ['reg', 'rs', 'rs（シフト量）']],
+    BZ: [['reg', 'rs', 'rs'], ['target', 'target', '飛び先']]
+  };
+  var B_INFO = {
+    ADD: ['R3', 'rd ← rs + rt（オーバーフローで例外）'], SUB: ['R3', 'rd ← rs − rt（オーバーフローで例外）'],
+    ADDU: ['R3', 'rd ← rs + rt'], SUBU: ['R3', 'rd ← rs − rt'],
+    SYSCALL: ['NOP', '$v0 の番号のサービスを呼ぶ（1 整数出力 / 4 文字列出力 / 10 終了 / 11 文字出力）'], BREAK: ['NOP', '実行を停止する'], AND: ['R3', 'rd ← rs & rt'], OR: ['R3', 'rd ← rs | rt'],
+    XOR: ['R3', 'rd ← rs ^ rt'], SLT: ['R3', 'rs < rt なら rd ← 1、それ以外 0'],
+    SLL: ['SH', 'rd ← rt << シフト量'], SRL: ['SH', 'rd ← rt >> シフト量'],
+    ADDI: ['I', 'rt ← rs + 即値（オーバーフローで例外）'], ADDIU: ['I', 'rt ← rs + 即値'], ANDI: ['I', 'rt ← rs & 即値'], ORI: ['I', 'rt ← rs | 即値'], XORI: ['I', 'rt ← rs ^ 即値'],
+    SLTI: ['I', 'rs < 即値 なら rt ← 1、それ以外 0'], LUI: ['LUI', 'rt の上位16bit ← 即値（下位は 0）'],
+    LW: ['LD', 'rt ← M[番地]（ワード）'], LB: ['LD', 'rt ← M[番地]（バイト・符号拡張）'], LBU: ['LD', 'rt ← M[番地]（バイト）'],
+    SW: ['ST', 'M[番地] ← rt（ワード）'], SB: ['ST', 'M[番地] ← rt（バイト）'],
+    BEQ: ['BR', 'rs == rt なら飛ぶ'], BNE: ['BR', 'rs != rt なら飛ぶ'], J: ['J', '無条件に飛ぶ'],
+    JAL: ['J', '関数を呼ぶ（$ra ← 戻り番地）'], JR: ['JR', 'rs の番地へ飛ぶ（JR $ra で関数から戻る）'],
+    MULT: ['MD', '{HI, LO} ← rs × rt'], DIV: ['MD', 'LO ← rs ÷ rt の商、HI ← 余り'],
+    MFHI: ['MF', 'rd ← HI'], MFLO: ['MF', 'rd ← LO'], MTHI: ['MT', 'HI ← rs'], MTLO: ['MT', 'LO ← rs'],
+    NOP: ['NOP', '何もしない（00000000）'], LI: ['LI', 'rd ← 値'], LA: ['LA', 'rd ← ラベルの番地'],
+    MOVE: ['MOVE', 'rd ← rs'], MUL: ['R3', 'rd ← rs × rt（MULT + MFLO）'],
+    BLT: ['BR', 'rs < rt なら飛ぶ（SLT + BNE）'], BGE: ['BR', 'rs >= rt なら飛ぶ（SLT + BEQ）'],
+    BGT: ['BR', 'rs > rt なら飛ぶ（SLT + BNE）'], BLE: ['BR', 'rs <= rt なら飛ぶ（SLT + BEQ）'],
+    NOR: ['R3', 'rd ← ~(rs | rt)'], SLTU: ['R3', 'rs < rt（符号なし）なら rd ← 1、それ以外 0'],
+    SRA: ['SH', 'rd ← rt >> シフト量（符号を保つ）'], SLLV: ['SV', 'rd ← rt << rs'], SRLV: ['SV', 'rd ← rt >> rs'],
+    SRAV: ['SV', 'rd ← rt >> rs（符号を保つ）'], MULTU: ['MD', '{HI, LO} ← rs × rt（符号なし）'],
+    DIVU: ['MD', 'LO ← rs ÷ rt の商、HI ← 余り（符号なし）'], JALR: ['JR', 'rs の番地の関数を呼ぶ（$ra ← 戻り番地）'],
+    SLTIU: ['I', 'rs < 即値（符号なしで比較）なら rt ← 1、それ以外 0'],
+    LH: ['LD', 'rt ← M[番地]（ハーフワード・符号拡張）'], LHU: ['LD', 'rt ← M[番地]（ハーフワード）'], SH: ['ST', 'M[番地] ← rt（ハーフワード）'],
+    BLEZ: ['BZ', 'rs <= 0 なら飛ぶ'], BGTZ: ['BZ', 'rs > 0 なら飛ぶ'], BLTZ: ['BZ', 'rs < 0 なら飛ぶ'], BGEZ: ['BZ', 'rs >= 0 なら飛ぶ'],
+    BLTZAL: ['BZ', 'rs < 0 なら関数を呼ぶ（$ra は常に書く）'], BGEZAL: ['BZ', 'rs >= 0 なら関数を呼ぶ（$ra は常に書く）'],
+    NOT: ['MOVE', 'rd ← ~rs（NOR）'], NEG: ['MOVE', 'rd ← −rs（SUB）'], B: ['J', '無条件に飛ぶ（BEQ $0, $0）'],
+    BEQZ: ['BZ', 'rs == 0 なら飛ぶ（BEQ）'], BNEZ: ['BZ', 'rs != 0 なら飛ぶ（BNE）'],
+    BLTU: ['BR', 'rs < rt（符号なし）なら飛ぶ（SLTU + BNE）'], BGEU: ['BR', 'rs >= rt（符号なし）なら飛ぶ（SLTU + BEQ）'],
+    BGTU: ['BR', 'rs > rt（符号なし）なら飛ぶ（SLTU + BNE）'], BLEU: ['BR', 'rs <= rt（符号なし）なら飛ぶ（SLTU + BEQ）']
+  };
+  var bState = { rd: 10, rs: 8, rt: 9, shamt: '1', imm: '1', n32: '0', off: '0', target: '', label: '' };
+  var REG_OPTIONS = REGN.map(function (n, i) { return '<option value="' + i + '" title="別名 $' + n + '">$' + i + '</option>'; }).join('');
+
+  function bMn() { return $('bOp').value; }
+  function bFields() { return B_KINDS[B_INFO[bMn()][0]]; }
+
+  function builderInit() {
+    setBuilderFormat('R', 'ADD', true);
+    var open = true;
+    try { open = localStorage.getItem('mips-builder') !== '0'; } catch (e) { /* ignore */ }
+    setBuilderOpen(open);
+    renderBuilderFields();
+  }
+
+  // 形式を選ぶと、その形式の命令だけをプルダウンに並べる
+  function setBuilderFormat(fmt, mn, silent) {
+    bFormat = fmt;
+    [].forEach.call($('bFmtSeg').querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-f') === fmt);
+    });
+    $('bOp').innerHTML = B_FORMATS[fmt].map(function (g) {
+      return '<optgroup label="' + g[0] + '">' + g[1].map(function (m) {
+        return '<option value="' + m + '">' + m + ' — ' + B_NAMES[m] + '</option>';
+      }).join('') + '</optgroup>';
+    }).join('');
+    $('bOp').value = mn || bLastOp[fmt];
+    if (!silent) renderBuilderFields();
+  }
+
+  function setBuilderOpen(open) {
+    $('builderBody').hidden = !open;
+    $('bArrow').textContent = open ? '▾' : '▸';
+    try { localStorage.setItem('mips-builder', open ? '1' : '0'); } catch (e) { /* ignore */ }
+  }
+
+  function renderBuilderFields() {
+    var mn = bMn(), info = B_INFO[mn];
+    bLastOp[bFormat] = mn;
+    $('bDesc').textContent = info[1];
+    $('bFields').innerHTML = bFields().map(function (f) {
+      var cap = '<span>' + f[2] + '</span>';
+      switch (f[0]) {
+        case 'reg':
+          return '<label class="bf">' + cap + '<select class="reg-sel" data-k="' + f[1] + '">' + REG_OPTIONS + '</select></label>';
+        case 'num':
+          return '<label class="bf">' + cap + '<input data-k="' + f[1] + '" spellcheck="false" placeholder="10 / 0x7A / -1" style="width:' + (f[1] === 'shamt' ? 6 : 12) + 'ch"></label>';
+        case 'mem':
+          return '<span class="bf">' + cap + '<span class="mem"><input data-k="off" spellcheck="false" placeholder="0" style="width:7ch" title="offset（例: 0, 4, -8）">(' +
+            '<select class="reg-sel" data-k="rs">' + REG_OPTIONS + '</select>)</span></span>';
+        case 'target':
+          return '<label class="bf" style="flex:1;min-width:10em">' + cap + '<input data-k="target" list="bLabels" spellcheck="false" placeholder="ラベル / 0x00400010 / +2"></label>';
+        case 'label':
+          return '<label class="bf" style="flex:1;min-width:8em">' + cap + '<input data-k="label" list="bLabels" spellcheck="false" placeholder="DATA"></label>';
+      }
+      return '';
+    }).join('') || '<span class="b-desc" style="padding:4px 0">オペランドはありません</span>';
+    [].forEach.call($('bFields').querySelectorAll('[data-k]'), function (el) {
+      el.value = String(bState[el.getAttribute('data-k')]);
+    });
+    builderRefresh();
+  }
+
+  function bOperands() {
+    return bFields().map(function (f) {
+      switch (f[0]) {
+        case 'reg': return '$' + bState[f[1]];
+        case 'num': return String(bState[f[1]]).trim() || '0';
+        case 'mem': return (String(bState.off).trim() || '0') + '($' + bState.rs + ')';
+        default: return String(bState[f[1]]).trim();
+      }
+    });
+  }
+
+  function bInstr() {
+    var ops = bOperands();
+    return bMn() + (ops.length ? ' ' + ops.join(', ') : '');
+  }
+
+  // エディタに入れる 1 行（左詰め。ラベルとコメントは付けたときだけ）
+  function bLineText() {
+    var label = $('bLabel').value.trim(), cm = $('bComment').value.trim().replace(/^#\s*/, '');
+    return (label ? label + ': ' : '') + bInstr() + (cm ? '  # ' + cm : '');
+  }
+
+  // カーソル行の情報
+  function cursorLine() {
+    var v = src.value, pos = src.selectionStart || 0;
+    var start = v.lastIndexOf('\n', pos - 1) + 1;
+    var end = v.indexOf('\n', pos);
+    if (end < 0) end = v.length;
+    var text = v.slice(start, end);
+    var code = text.replace(/#.*$/, '').replace(/^\s*[A-Za-z_][\w.]*\s*:/, '').trim();
+    return { index: v.slice(0, start).split('\n').length - 1, start: start, end: end, text: text, blank: text.trim() === '', hasInstr: code !== '' };
+  }
+
+  function builderRefresh() {
+    if (!$('bOp').value) return;
+    var cur = cursorLine();
+    if (bEditLine !== cur.index || cur.blank) bEditLine = -1;
+    var editing = bEditLine >= 0;
+    $('bPos').textContent = editing
+      ? '✎ ' + (cur.index + 1) + ' 行目を編集中'
+      : cur.blank ? '→ ' + (cur.index + 1) + ' 行目に追加' : '→ ' + (cur.index + 1) + ' 行目の次に追加';
+    $('bAdd').classList.toggle('primary', !editing);
+    $('bReplace').classList.toggle('primary', editing);
+    $('bAdd').innerHTML = editing ? '追加' : '追加 ⏎';
+    $('bReplace').innerHTML = editing ? '置換 ⏎' : '置換';
+    $('bReplace').disabled = cur.blank;
+    $('bLoad').disabled = !cur.hasInstr;
+    $('bLine').textContent = bInstr();
+
+    // 実際に挿入した場合と同じ位置でアセンブルして、機械語とエラーを表示
+    var lines = src.value.split('\n');
+    var replace = cur.blank || editing;
+    var at = replace ? cur.index : cur.index + 1;
+    var line = bLineText();
+    if (replace) lines[at] = line; else lines.splice(at, 0, line);
+    var res = MipsAssembler.assemble(lines.join('\n'), { startAddress: parseStart() || MipsAssembler.DEFAULT_START });
+    var errs = res.errors.filter(function (e) { return e.line === at + 1; });
+    var ws = res.words.filter(function (w) { return w.line === at + 1; });
+    $('bOut').innerHTML = errs.length
+      ? '<span class="err">⚠ ' + esc(errs[0].message) + '</span>'
+      : '→ <span class="hex">' + ws.map(function (w) { return w.hex; }).join(' ') + '</span>' +
+        (ws.length && ws[0].note ? ' <span class="b-desc">' + esc(ws[0].note) + '</span>' : '');
+  }
+
+  function insertIntoEditor(start, end, text) {
+    src.focus();
+    src.setSelectionRange(start, end);
+    if (!document.execCommand('insertText', false, text)) {
+      // execCommand が使えない環境向け
+      src.value = src.value.slice(0, start) + text + src.value.slice(end);
+      src.setSelectionRange(start + text.length, start + text.length);
+      src.dispatchEvent(new Event('input'));
+    }
+  }
+
+  function builderAdd() {
+    bEditLine = -1;
+    var cur = cursorLine(), line = bLineText();
+    if (cur.blank) insertIntoEditor(cur.start, cur.end, line);
+    else insertIntoEditor(cur.end, cur.end, '\n' + line);
+    $('bLabel').value = '';
+    $('bComment').value = '';
+    $('bOp').focus();
+    builderRefresh();
+  }
+
+  function builderReplace() {
+    var cur = cursorLine();
+    if (cur.blank) return;
+    insertIntoEditor(cur.start, cur.end, bLineText());
+    bEditLine = -1;
+    $('bOp').focus();
+    builderRefresh();
+  }
+
+  function parseRegToken(tok) {
+    var m = /^\$(\w+)$/.exec(tok.trim());
+    if (!m) return null;
+    var k = m[1].toLowerCase();
+    if (/^\d+$/.test(k)) return parseInt(k, 10) <= 31 ? parseInt(k, 10) : null;
+    if (k === 's8') return 30;
+    var i = REGN.indexOf(k);
+    return i >= 0 ? i : null;
+  }
+
+  // カーソル行の命令をパネルに読み込む
+  function builderLoad() {
+    var cur = cursorLine();
+    var t = cur.text, comment = '';
+    var ci = t.indexOf('#');
+    if (ci >= 0) { comment = t.slice(ci + 1).trim(); t = t.slice(0, ci); }
+    var label = '';
+    var lm = /^\s*([A-Za-z_][\w.]*)\s*:/.exec(t);
+    if (lm) { label = lm[1]; t = t.slice(lm[0].length); }
+    var m = /^\s*(\S+)\s*(.*?)\s*$/.exec(t);
+    if (!m) return;
+    var mn = m[1].toUpperCase();
+    var ops = m[2] ? m[2].split(',').map(function (s) { return s.trim(); }) : [];
+    if (!B_INFO[mn]) { toast(mn + ' は入力補助に対応していません'); return; }
+    var fields = B_KINDS[B_INFO[mn][0]];
+    if (ops.length !== fields.length) { toast('この行は入力補助の形式（' + fields.length + ' 個のオペランド）と合わないため読み込めません'); return; }
+    var next = Object.assign({}, bState);
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i], op = ops[i];
+      if (f[0] === 'reg') {
+        var r = parseRegToken(op);
+        if (r === null) { toast('レジスタを読み取れません: ' + op); return; }
+        next[f[1]] = r;
+      } else if (f[0] === 'mem') {
+        var mm = /^(.*?)\s*\(\s*(\$\w+)\s*\)$/.exec(op);
+        var base = mm && parseRegToken(mm[2]);
+        if (!mm || base === null) { toast('メモリの指定を読み取れません: ' + op); return; }
+        next.off = mm[1] || '0';
+        next.rs = base;
+      } else {
+        next[f[1]] = op;
+      }
+    }
+    bState = next;
+    setBuilderFormat(formatOf(mn), mn, true);
+    bEditLine = cur.index;
+    $('bLabel').value = label;
+    $('bComment').value = comment;
+    renderBuilderFields();
+    toast((cur.index + 1) + ' 行目を読み込みました。編集して「置換」で書き戻せます');
+  }
+
+  // ===== イベント =====
+  btnCopyHex.addEventListener('click', function () { if (last) copy(outputText(false)); });
+  btnCopyAddr.addEventListener('click', function () { if (last) copy(outputText(true)); });
+  btnSave.addEventListener('click', function () {
+    if (!last) return;
+    var blob = new Blob([outputText(true)], { type: 'text/plain' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mips_machine_code.txt';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  });
+
+  var timer = null;
+  function save() { try { localStorage.setItem(STORAGE_KEY, src.value); } catch (e) { /* ignore */ } }
+  src.addEventListener('input', function () {
+    renderGutter();
+    save();
+    if ($('auto').checked) {
+      clearTimeout(timer);
+      timer = setTimeout(run, 200);
+    }
+  });
+  src.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); return; }
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      document.execCommand('insertText', false, '\t');
+    }
+  });
+  startInput.addEventListener('input', function () { if ($('auto').checked) run(); });
+  // 自動変換が有効なときは「変換」を押す必要がないので、主ボタンの色をやめる
+  function syncAssembleButton() { $('btnAssemble').classList.toggle('primary', !$('auto').checked); }
+  $('auto').addEventListener('change', function () { syncAssembleButton(); if ($('auto').checked) run(); });
+  syncAssembleButton();
+  $('btnAssemble').addEventListener('click', run);
+  $('split').addEventListener('change', function () { if (last) { renderTable(last); applyMarkers(); } });
+  $('btnClear').addEventListener('click', function () {
+    src.value = '';
+    save();
+    run();
+    src.focus();
+  });
+  $('sample').addEventListener('change', function (e) {
+    var key = e.target.value;
+    if (!key) return;
+    src.value = SAMPLES[key].join('\n') + '\n';
+    startInput.value = H(MipsAssembler.DEFAULT_START);
+    applySamplePreset(key);
+    e.target.value = '';
+    save();
+    run();
+  });
+
+  function lineFromEvent(e) {
+    var el = e.target.closest('[data-line]');
+    return el ? parseInt(el.getAttribute('data-line'), 10) : 0;
+  }
+  resultWrap.addEventListener('mouseover', function (e) { setHighlight(lineFromEvent(e)); });
+  resultWrap.addEventListener('mouseleave', function () { setHighlight(0); });
+  resultWrap.addEventListener('click', function (e) {
+    var mk = e.target.closest('td.mk');
+    if (mk) { toggleBreakpoint(parseInt(mk.parentNode.getAttribute('data-addr'), 10)); return; }
+    var l = lineFromEvent(e);
+    if (l) gotoLine(l);
+  });
+  msgsEl.addEventListener('click', function (e) { var l = lineFromEvent(e); if (l) gotoLine(l); });
+
+  // 実行パネル
+  $('modeSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (b) setMode(b.getAttribute('data-mode'));
+  });
+  $('toPipe').addEventListener('click', function () { setMode('pipe'); });
+  $('optDelaySlot').addEventListener('change', function (e) { setExecOption('delaySlot', e.target.checked); });
+  $('optLoadUse').addEventListener('change', function (e) { setExecOption('loadUse', e.target.value); });
+  // 設定のポップオーバー: 外側のクリックと Esc で閉じる
+  document.addEventListener('click', function (e) {
+    if ($('opts').open && !$('opts').contains(e.target)) $('opts').open = false;
+  });
+  $('opts').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { $('opts').open = false; $('opts').querySelector('summary').focus(); }
+  });
+  $('simReset').addEventListener('click', simReset);
+  $('simBack').addEventListener('click', simBack);
+  $('simStep').addEventListener('click', simStep);
+  $('simRun').addEventListener('click', simRun);
+  // タブ
+  $('tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (b) showTab(b.getAttribute('data-tab'));
+  });
+
+  // レジスタ画面
+  $('regs').addEventListener('change', function (e) {
+    var i = parseInt(e.target.getAttribute('data-reg'), 10);
+    if (isNaN(i)) return;
+    if (!writeReg(i, e.target.value) && machine) renderRegs(machine.state);
+  });
+  $('regs').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.target.blur();
+  });
+  $('regDec').addEventListener('change', function () { if (machine) renderRegs(machine.state); });
+  $('regClear').addEventListener('click', function () {
+    initRegs = defaultRegs();
+    saveSim();
+    buildMachine();
+  });
+
+  // メモリ画面
+  $('memAdr').addEventListener('change', function (e) { setAdr(parseHex32(e.target.value)); });
+  $('memAdr').addEventListener('keydown', function (e) { if (e.key === 'Enter') e.target.blur(); });
+  ['memView', 'memData'].forEach(function (id) {
+    $(id).addEventListener('click', function (e) {
+      if (e.target.matches('input.mv:not([readonly])')) return;
+      var tr = e.target.closest('tr[data-adr]');
+      if (tr) setAdr(parseInt(tr.getAttribute('data-adr'), 10));
+    });
+    $(id).addEventListener('change', function (e) {
+      if (!e.target.matches('input.mv')) return;
+      var a = parseInt(e.target.getAttribute('data-adr'), 10);
+      if (!writeMem(a, e.target.value) && machine) renderMem(machine.state);
+    });
+    $(id).addEventListener('keydown', function (e) {
+      if (!e.target.matches('input.mv:not([readonly])')) return;
+      if (e.key === 'Escape') { renderMem(machine.state); return; }
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      var a = parseInt(e.target.getAttribute('data-adr'), 10), next = (a + 4) >>> 0;
+      var ok = writeMem(a, e.target.value);
+      if (!ok) { renderMem(machine.state); return; }
+      // 次の番地の入力欄へ（表示範囲外ならメモリ一覧をずらす）
+      var sel = 'input.mv[data-adr="' + next + '"]';
+      if (id === 'memView' && !$(id).querySelector(sel)) setAdr(next);
+      var nx = $(id).querySelector(sel) || $('memView').querySelector(sel);
+      if (nx && !nx.readOnly) { nx.focus(); nx.select(); }
+    });
+  });
+  $('memAsm').addEventListener('change', function (e) { dispAsm = e.target.checked; saveSim(); renderSim(); });
+  var memTimer = null;
+  $('memInit').addEventListener('input', function () {
+    clearTimeout(memTimer);
+    memTimer = setTimeout(function () { saveSim(); buildMachine(); }, 300);
+  });
+
+  // 履歴
+  $('obsView').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    obsView = b.getAttribute('data-v');
+    saveSim();
+    if (machine) renderObs();
+  });
+  $('obsAll').addEventListener('change', function () { if (machine) renderObs(); });
+  $('obsCopy').addEventListener('click', function () { if (machine) copy(obsTsv()); });
+
+  // 入力補助
+  $('bToggle').addEventListener('click', function () { setBuilderOpen($('builderBody').hidden); });
+  $('bOp').addEventListener('change', renderBuilderFields);
+  $('bFmtSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    setBuilderFormat(b.getAttribute('data-f'));
+    $('bOp').focus();
+  });
+
+  // 左右パネルの幅（境界をドラッグ。ダブルクリックで既定値）
+  var LW_KEY = 'mips-left-width', LW_DEFAULT = 46;
+  function setLeftWidth(pct, persist) {
+    pct = Math.max(25, Math.min(70, pct));
+    document.querySelector('main').style.setProperty('--lw', pct + '%');
+    if (persist) { try { localStorage.setItem(LW_KEY, String(pct)); } catch (e) { /* ignore */ } }
+  }
+  (function () {
+    var sp = $('splitter'), mainEl = document.querySelector('main');
+    sp.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      sp.setPointerCapture(e.pointerId);
+      sp.classList.add('drag');
+      document.body.classList.add('resizing');
+    });
+    sp.addEventListener('pointermove', function (e) {
+      if (!sp.classList.contains('drag')) return;
+      var r = mainEl.getBoundingClientRect(), cs = getComputedStyle(mainEl);
+      var inner = r.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      setLeftWidth((e.clientX - r.left - parseFloat(cs.paddingLeft) - 6) / inner * 100, false);
+    });
+    sp.addEventListener('pointerup', function () {
+      sp.classList.remove('drag');
+      document.body.classList.remove('resizing');
+      var v = parseFloat(mainEl.style.getPropertyValue('--lw'));
+      if (!isNaN(v)) setLeftWidth(v, true);
+    });
+    sp.addEventListener('dblclick', function () { setLeftWidth(LW_DEFAULT, true); });
+    var saved = NaN;
+    try { saved = parseFloat(localStorage.getItem(LW_KEY)); } catch (e) { /* ignore */ }
+    setLeftWidth(isNaN(saved) ? LW_DEFAULT : saved, false);
+  })();
+  function bFieldChanged(e) {
+    var k = e.target.getAttribute('data-k');
+    if (!k) return;
+    bState[k] = e.target.tagName === 'SELECT' ? parseInt(e.target.value, 10) : e.target.value;
+    builderRefresh();
+  }
+  $('bFields').addEventListener('input', bFieldChanged);
+  $('bFields').addEventListener('change', bFieldChanged);
+  $('bLabel').addEventListener('input', builderRefresh);
+  $('bComment').addEventListener('input', builderRefresh);
+  $('bAdd').addEventListener('click', builderAdd);
+  $('bReplace').addEventListener('click', builderReplace);
+  $('bLoad').addEventListener('click', builderLoad);
+  $('builder').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.tagName !== 'BUTTON' && !e.isComposing) {
+      e.preventDefault();
+      if (bEditLine >= 0) builderReplace(); else builderAdd();
+    }
+  });
+  ['click', 'keyup', 'select'].forEach(function (ev) { src.addEventListener(ev, builderRefresh); });
+
+  // ヘルプ
+  $('btnHelp').addEventListener('click', function () { $('help').showModal(); });
+  $('helpClose').addEventListener('click', function () { $('help').close(); });
+
+  // キーボード: F8 リセット / F9 実行・停止 / F10 ステップ / Alt+1〜7 画面切り替え
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'F10') { e.preventDefault(); simStep(); }
+    else if (e.key === 'F9') { e.preventDefault(); simRun(); }
+    else if (e.key === 'F8') { e.preventDefault(); simReset(); }
+    else if (e.altKey && /^[1-7]$/.test(e.key)) { e.preventDefault(); showTab(TABS[parseInt(e.key, 10) - 1]); }
+  });
+
+  // ---- init ----
+  buildStaticUi();
+  builderInit();
+  var hasSim = loadSim();
+  var saved = null;
+  try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) { saved = null; }
+  // 前回の入力があれば復元する。初めて開いたときはエディタを空にする（例はプレースホルダとサンプルで示す）
+  if (saved !== null) src.value = saved;
+  if (!hasSim) applySamplePreset('');
+  showTab(tab);
+  run();
+})();
+</script>
+</body>
+</html>

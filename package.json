@@ -1,0 +1,19 @@
+{
+  "name": "mips-pipeline-simulator",
+  "version": "1.0.0",
+  "description": "ブラウザで動く MIPS アセンブラ / シミュレータ（5 段パイプライン対応）",
+  "private": true,
+  "license": "MIT",
+  "author": "quwon-000",
+  "homepage": "https://quwon-000.github.io/MIPS-pipeline-simulator/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quwon-000/MIPS-pipeline-simulator.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test/assembler.test.js"
+  }
+}
