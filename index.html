@@ -444,16 +444,55 @@
   }
   .toast.show { opacity: 1; }
 
-  /* 狭い画面ではページ全体をスクロール */
+  /* 狭い画面では 1 列に並べ、ページ全体をスクロール */
   @media (max-width: 900px) {
     body { overflow: auto; height: auto; }
-    main { grid-template-columns: 1fr; gap: 12px; }
+    /* minmax(0, …) にしないと、中身の幅より狭くできずに横にはみ出す */
+    main { grid-template-columns: minmax(0, 1fr); gap: 12px; }
     .left { height: 60vh; }
     .right-col { height: 90vh; }
     .splitter { display: none; }
-    .mem-grid { grid-template-columns: 1fr; }
+    .mem-grid { grid-template-columns: minmax(0, 1fr); }
     .mem-grid > div + div { border-left: 0; border-top: 1px solid var(--border); }
     .pipe-stages { grid-template-columns: 1fr 1fr; }
+    .iregs { grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); }
+  }
+
+  /* スマホ */
+  @media (max-width: 600px) {
+    main { padding: 8px; gap: 8px; }
+    /* 左列は中身に合わせて伸ばす（入力補助を開いてもエディタの高さを保つ） */
+    .left { height: auto; }
+    .editor { flex: none; height: 55svh; min-height: 280px; }
+    .msgs-box { max-height: 30svh; }
+    .right-col { height: 85svh; min-height: 480px; gap: 8px; }
+    /* iPhone は 16px 未満の入力欄をタップすると画面を拡大するため、入力欄は 16px にする */
+    input:not([type=checkbox]), select, textarea { font-size: 16px !important; }
+    .editor { line-height: 22px; }
+    .gutter div { height: 22px; }
+    .app-head, .tool-row, .panel-head, .op-row { padding-left: 10px; padding-right: 10px; }
+    .app-head select { max-width: 9.5em !important; }
+    .b-op { min-width: 0; max-width: 100%; }
+    .b-row > .bf { min-width: 0; max-width: 100%; }
+    #bComment { min-width: 100% !important; }
+    /* 実行パネル: ボタンを押しやすく、設定は画面幅いっぱいに開く */
+    .ctrl { padding: 8px 10px 6px; }
+    .ctrl .grp button, .mode-seg button { padding: 6px 10px; }
+    .opts { position: static; }
+    .opts-pop { left: 8px; right: 8px; width: auto; top: calc(100% - 2px); }
+    .tabs button { padding: 6px 10px; }
+    /* 機械語: ビットフィールドの列は省く（行をタップするとソースへ移動できる） */
+    .code-table th:nth-child(5), .code-table tr.word td:nth-child(5), .code-table tr.data td:nth-child(5) { display: none; }
+    .code-table thead th, .code-table tbody td { padding-left: 6px; padding-right: 6px; }
+    td.hex { font-size: 15px; }
+    .regs { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 8px; }
+    .pipe-stages { padding: 8px; }
+    .iregs { padding: 4px 8px 10px; font-size: 12px; }
+    .iregs .nm { width: 13ch; }
+    /* パイプライン図: 命令の列を細くして、クロックの列を多く見せる（番地は省く） */
+    table.pd .ins { padding: 2px 8px 2px 6px; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+    table.pd .ins .a { display: none; }
+    dialog#help .bd { max-height: 80svh; }
   }
 </style>
 </head>
@@ -3121,8 +3160,12 @@ var MipsSimulator = (function () {
 
   function builderInit() {
     setBuilderFormat('R', 'ADD', true);
-    var open = true;
-    try { open = localStorage.getItem('mips-builder') !== '0'; } catch (e) { /* ignore */ }
+    // 開閉を選んだことがなければ、スマホでは閉じておく（エディタを広く使う）
+    var open = !(window.matchMedia && window.matchMedia('(max-width: 600px)').matches);
+    try {
+      var saved = localStorage.getItem('mips-builder');
+      if (saved !== null) open = saved !== '0';
+    } catch (e) { /* ignore */ }
     setBuilderOpen(open);
     renderBuilderFields();
   }
