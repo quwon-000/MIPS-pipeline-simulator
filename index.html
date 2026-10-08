@@ -370,14 +370,40 @@
   table.mem tbody tr { cursor: pointer; }
 
   /* パイプライン */
-  .pipe-stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 10px 12px; }
-  .stage { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 0; background: var(--bg); }
-  .stage .sn { font-weight: 700; font-size: 12px; color: var(--accent); }
-  .stage .si { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; margin-top: 2px; }
-  .stage.empty .si { color: var(--muted); }
+  /* パイプラインの内部構造図（SVG） */
+  .pipe-diagram { overflow-x: auto; padding: 6px 8px 2px; }
+  .pipe-diagram svg { display: block; width: 100%; min-width: 760px; height: auto; font-family: var(--mono); }
+  .dp-col { stroke: var(--border); stroke-dasharray: 4 4; }
+  .dp-stage { font: 700 14px system-ui, sans-serif; fill: var(--accent); }
+  .dp-ins { font-size: 12.5px; fill: var(--text); }
+  .dp-ins.emp { fill: var(--muted); }
+  .dp-tag { font: 700 11px system-ui, sans-serif; fill: var(--warn); }
+  .dp-w { fill: none; stroke: var(--muted); stroke-width: 1.3; opacity: .55; }
+  .dp-w.ctl { stroke-dasharray: 3 3; }
+  .dp-w.on { stroke: var(--accent); stroke-width: 2.4; opacity: 1; }
+  .dp-w.fw.on { stroke: var(--ok); }
+  .dp-arr { fill: var(--muted); opacity: .7; }
+  .dp-arr.on { fill: var(--accent); opacity: 1; }
+  .dp-arr.fw { fill: var(--ok); opacity: 1; }
+  .dp-reg rect { fill: var(--panel); stroke: var(--muted); stroke-width: 1; }
+  .dp-reg.pc rect { fill: color-mix(in srgb, var(--f-sh) 14%, var(--panel)); }
+  .dp-reg.ir rect { fill: color-mix(in srgb, var(--fmt-i) 12%, var(--panel)); }
+  .dp-reg.dat rect { fill: color-mix(in srgb, var(--f-rd) 12%, var(--panel)); }
+  .dp-reg .n { font-size: 11px; fill: var(--muted); }
+  .dp-reg .v { font-size: 14px; font-weight: 600; fill: var(--text); }
+  .dp-reg.chg rect { stroke: var(--warn); stroke-width: 2; }
+  .dp-reg.chg .v { fill: var(--warn); }
+  .dp-reg.bub { opacity: .4; }
+  .dp-unit rect, .dp-unit path, .dp-unit circle { fill: var(--bg); stroke: var(--muted); stroke-width: 1.2; }
+  .dp-unit text { font: 12.5px system-ui, sans-serif; fill: var(--text); }
+  .dp-unit text.s { font: 11px var(--mono); fill: var(--muted); }
+  .dp-unit.on rect, .dp-unit.on circle { stroke: var(--ok); stroke-width: 2; }
+  .dp-note { font: 700 12.5px var(--mono); fill: var(--accent); }
+  .dp-note.fw { fill: var(--ok); }
   .tag { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 3px; padding: 0 4px; margin: 3px 3px 0 0; background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); }
   .tag.fwd { background: transparent; color: var(--ok); border-color: var(--ok); }
-  .sec-title { padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--muted); border-top: 1px solid var(--border); }
+  .pipe-head { position: sticky; top: 0; z-index: 2; background: var(--panel); }
+  .iregs { padding-top: 10px !important; }
   .iregs { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 2px 10px; padding: 4px 12px 10px; font-family: var(--mono); font-size: 13px; }
   .iregs div { display: flex; gap: 6px; padding: 1px 4px; border-radius: 4px; }
   .iregs .nm { color: var(--accent); width: 14ch; flex: none; }
@@ -393,6 +419,11 @@
   table.obs th:first-child { z-index: 2; }
   table.obs td.diff { color: var(--warn); font-weight: 700; }
   table.obs td.last { background: var(--row-hover); }
+  table.obs th small { display: block; font-weight: 400; font-size: 10px; color: var(--muted); }
+  /* 観測表の設定（観測点・タイミング・行に入れるレジスタ） */
+  .ot-ctl select { font-family: var(--mono); font-size: 12px; padding: 2px 4px; max-width: 22em; }
+  .ot-regs { display: flex; flex-wrap: wrap; gap: 2px 12px; width: 100%; }
+  .ot-chip { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 12px; color: var(--text); white-space: nowrap; cursor: pointer; }
 
   /* パイプライン図（行 = 命令、列 = クロック） */
   table.pd { font-family: var(--mono); font-size: 12px; width: auto; }
@@ -454,7 +485,6 @@
     .splitter { display: none; }
     .mem-grid { grid-template-columns: minmax(0, 1fr); }
     .mem-grid > div + div { border-left: 0; border-top: 1px solid var(--border); }
-    .pipe-stages { grid-template-columns: 1fr 1fr; }
     .iregs { grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); }
   }
 
@@ -486,7 +516,7 @@
     .code-table thead th, .code-table tbody td { padding-left: 6px; padding-right: 6px; }
     td.hex { font-size: 15px; }
     .regs { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 8px; }
-    .pipe-stages { padding: 8px; }
+    .pipe-diagram { padding: 4px 4px 2px; }
     .iregs { padding: 4px 8px 10px; font-size: 12px; }
     .iregs .nm { width: 13ch; }
     /* パイプライン図: 命令の列を細くして、クロックの列を多く見せる（番地は省く） */
@@ -671,8 +701,13 @@
       <div class="sim-on pane-body">
         <div id="pipeOff" class="sim-off">パイプラインの様子は、実行方式を「パイプライン」にすると表示されます。<br><br><button id="toPipe">パイプラインに切り替える</button></div>
         <div id="pipeOn">
-          <div class="pipe-stages" id="pipeStages"></div>
-          <div class="sec-title">内部レジスタ（パイプラインレジスタ）</div>
+          <div class="panel-head pipe-head">
+            <span class="sub">
+              <span class="fmt-seg" id="pipeView"><button data-v="diagram" title="パイプラインの内部構造（データパス）を図で表示">構造図</button><button data-v="list" title="パイプラインレジスタの値を一覧で表示">一覧</button></span>
+              <span id="pipeSub"></span>
+            </span>
+          </div>
+          <div class="pipe-diagram" id="pipeDiagram"></div>
           <div class="iregs" id="iregs"></div>
           <div class="assume" id="pipeAssume"></div>
         </div>
@@ -684,13 +719,39 @@
       <div class="sim-on pane" style="min-height:0">
         <div class="panel-head">
           <span class="sub">
-            <span class="fmt-seg" id="obsView"><button data-v="diagram" title="命令ごとに、各クロックでどのステージにいたかを表示">パイプライン図</button><button data-v="values" title="レジスタ・メモリの値がクロックごとにどう変わったかを表示">値の変化</button></span>
+            <span class="fmt-seg" id="obsView"><button data-v="diagram" title="命令ごとに、各クロックでどのステージにいたかを表示">パイプライン図</button><button data-v="values" title="レジスタ・メモリの値を、各クロック（または観測点を通るたび）に並べて表示">値の変化</button></span>
             <span id="obsSub"></span>
           </span>
           <span class="sub">
             <label class="field" id="obsAllWrap"><input type="checkbox" id="obsAll"> パイプラインレジスタもすべて表示</label>
             <button id="obsCopy">表をコピー（TSV）</button>
           </span>
+        </div>
+        <div class="op-row ot-ctl" id="vcCtl" hidden>
+          <label class="field" title="すべてのクロック: 初期値と各クロック / 観測点を通ったときだけ: 選んだ命令を通るたびに 1 列（1回目、2回目…）">列
+            <select id="vcCols">
+              <option value="all">すべてのクロック</option>
+              <option value="point">観測点を通ったときだけ</option>
+            </select>
+          </label>
+          <label class="field" id="vcMaxWrap" title="空欄ならすべて表示"><span id="vcMaxLabel">クロック</span> <input type="number" id="vcMax" min="1" max="5000" placeholder="すべて" style="width:6em"> まで</label>
+          <label class="field" id="vcPointWrap" title="この命令を通るたびに 1 列記録する">観測点 <select id="otPoint"></select></label>
+          <label class="field" id="vcStageWrap" title="観測点の命令がこのステージにあるクロックの終わりの値を記録する">タイミング
+            <select id="otStage">
+              <option value="IF">IF にあるとき</option>
+              <option value="ID">ID にあるとき</option>
+              <option value="EX">EX にあるとき</option>
+              <option value="MEM">MEM にあるとき</option>
+              <option value="WB">WB にあるとき</option>
+            </select>
+          </label>
+          <label class="field" title="オフ: 決まった行と、値が変わったレジスタ・メモリを自動で並べる"><input type="checkbox" id="vcCustom"> 行を選ぶ</label>
+          <div class="ot-regs" id="vcPick" hidden>
+            <div class="ot-regs" id="vcRegs" title="表に入れるパイプラインレジスタ（パイプラインのときだけ）"></div>
+            <label class="field" title="空白またはカンマ区切り（例: $10 $t0 $ra）">汎用レジスタ <input id="vcGpr" spellcheck="false" placeholder="$10 $t0" style="width:12em"></label>
+            <label class="field" title="16 進の番地を空白またはカンマ区切り（4 の倍数に切り下げてワードを表示）">メモリ <input id="vcMem" spellcheck="false" placeholder="10010000" style="width:14em"></label>
+            <span class="mem-err" id="vcErr"></span>
+          </div>
         </div>
         <div class="pane-body" id="obsWrap"></div>
       </div>
@@ -725,7 +786,8 @@
     <p><b>値の書き換え：</b>「レジスタ」「メモリ」画面で値をクリックして入力します（メモリは Enter で次の番地へ）。クロック 0 で書き換えると初期値として保存され、リセット後も残ります。実行の途中で書き換えると今の値だけが変わり、◀ で取り消せます。$sp と $gp の初期値は MARS / SPIM と同じ <code>7FFFEFFC</code> / <code>10008000</code> です。</p>
     <p><b>機械語の画面：</b>行をクリックするとソースの該当行へ移動し、左端の ● をクリックするとブレークポイントを設定します。</p>
     <p><b>画面の切り替え：</b>Alt+1 機械語 / Alt+2 レジスタ / Alt+3 メモリ / Alt+4 パイプライン / Alt+5 履歴 / Alt+6 出力 / Alt+7 ログ</p>
-    <p><b>履歴：</b>「パイプライン図」は命令ごとに各クロックのステージを示します（<span class="pd-key st-stall">ID ストール</span> はロード結果待ちの停止、<span class="pd-key st-flush">IF 破棄</span> は分岐成立で捨てた命令、<small>←EX</small> などはフォワーディング元のステージ）。「値の変化」はレジスタ・メモリの値をクロックごとに並べます。</p>
+    <p><b>パイプライン：</b>「構造図」と「一覧」を切り替えて表示します。構造図では、ステージ境界の箱がパイプラインレジスタで、今のクロックの終わりの値を示します（前のクロックから変わった値はオレンジ）。フォワーディング・分岐・メモリの読み書き・書き戻しが起きた経路は色付きの線で示します。一覧では、すべてのパイプラインレジスタの値と説明を並べます。</p>
+    <p><b>履歴：</b>「パイプライン図」は命令ごとに各クロックのステージを示します（<span class="pd-key st-stall">ID ストール</span> はロード結果待ちの停止、<span class="pd-key st-flush">IF 破棄</span> は分岐成立で捨てた命令、<small>←EX</small> などはフォワーディング元のステージ）。「値の変化」はレジスタ・メモリの値を初期値とクロックごとに並べます。「行を選ぶ」でパイプラインレジスタ・汎用レジスタ・メモリの番地を選べ、「クロック N まで」で列の数を絞れます。列を「観測点を通ったときだけ」にすると、選んだ命令を通るたびに「1回目・2回目…」と 1 列ずつ並べます（パイプラインではその命令が指定したステージにあるクロック。ループの各周回の比較に便利です）。</p>
 
     <h3>実行方式の設定</h3>
     <table>
@@ -735,7 +797,24 @@
       <tr><td>ロード直後: 遅延ロード</td><td>MIPS I と同じく停止せず、直後の命令は古い値を読む（ログに警告を出します）</td></tr>
     </table>
     <p>パイプラインは IF / ID / EX / MEM / WB の 5 段で、分岐は ID で判定し、EX・MEM・WB からのフォワーディングを行います。メモリはビッグエンディアンです。</p>
+
     <p>ADD・ADDI・SUB で符号付きオーバーフローが起きると例外として停止します（結果は書き込まれません）。例外を起こさない ADDU・ADDIU・SUBU も使えます。</p>
+
+    <h3>この設計の特徴（教科書の標準的な 5 段パイプラインとの違い）</h3>
+    <p>パイプラインレジスタの名前は、教科書（Patterson &amp; Hennessy『コンピュータの構成と設計』）の表記にそろえています。ただし、フォワーディングの方式など、細かい動きは教科書の標準的な設計と異なります。ストールの回数などを教科書と比べるときは、次の違いに注意してください。</p>
+    <table>
+      <tr><th>項目</th><th>このツール</th><th>教科書の標準的な設計</th></tr>
+      <tr><td>フォワーディング先</td><td><b>ID ステージ</b>。EX の ALU の出力・MEM の結果・WB で書き戻す値を ID で受け取る。ID/EX.A・B には受け取った後の値が入る</td><td>EX ステージの入口。EX/MEM・MEM/WB から ALU の入力へ回す。ID/EX にはレジスタファイルから読んだ値が入る</td></tr>
+      <tr><td>分岐の判定</td><td>ID</td><td>ID（分岐を早く判定する改良版。最初の版では MEM）</td></tr>
+      <tr><td>直前の演算結果で分岐</td><td><b>ストールなし</b></td><td>1 クロックストール</td></tr>
+      <tr><td>直前のロード結果で分岐</td><td><b>1 クロック</b>ストール</td><td>2 クロックストール</td></tr>
+      <tr><td>ロード直後の演算</td><td>1 クロックストール</td><td>1 クロックストール（同じ）</td></tr>
+      <tr><td>分岐成立時</td><td>フェッチ済みの 1 命令を破棄（設定で遅延分岐）</td><td>同じ（分岐を ID で判定する版）</td></tr>
+      <tr><td>MEM/WB</td><td>書き戻す値を 1 つ（MEM/WB.Result）にまとめる</td><td>読み出したデータと ALU の結果を別々に持ち、WB で選ぶ</td></tr>
+      <tr><td>例外</td><td>その場で停止する</td><td>EPC に番地を保存して、例外処理ルーチンへ飛ぶ</td></tr>
+      <tr><td>構造図</td><td>即値・符号拡張の経路と制御信号は省略</td><td>すべて描く</td></tr>
+    </table>
+    <p>ID でフォワーディングを受けると、EX の結果を同じクロックのうちに ID での比較やレジスタの選択に使えるので、分岐のストールが減ります。その代わり、実際の回路では 1 クロックの間に通る経路（ALU → 選択 → 比較）が長くなり、動作周波数を上げにくくなります。設計上のこのような違いを比べられるのも、このツールで観察する目的の一つです。</p>
 
     <h3>入力補助（プルダウンで入力）</h3>
     <p>エディタ上部の「▾ 入力補助」をクリックすると開閉します。① 形式（R / I / J / 擬似）を選び、② 命令を選ぶと必要なオペランドの欄が出るので、レジスタをプルダウンで選び、数値や飛び先を入力して「追加」（Enter）を押すと、エディタのカーソル行の次に 1 行追加されます。
@@ -2395,7 +2474,14 @@ var MipsSimulator = (function () {
   var simNote = '';
   var adr = MipsSimulator.DATA_START;   // メモリ画面で表示する番地
   var dispAsm = false;      // メモリ画面をアセンブリで表示するか
+  var pipeView = 'diagram'; // パイプライン画面の表示: 'diagram'（構造図）| 'list'（一覧）
   var obsView = 'diagram';  // 履歴の表示: 'diagram'（パイプライン図）| 'values'（値の変化）
+  // 値の変化の列: 'all' = 初期値と各クロック（vcMax まで、0 = すべて）
+  //               'point' = 観測点の命令（otPoint）を通るたびに 1 列。パイプラインでは otStage にあるクロック
+  var vcCols = 'all', otPoint = null, otStage = 'ID';
+  // 値の変化の行: 行を選ぶとき（vcCustom）のパイプラインレジスタ・汎用レジスタ・メモリ
+  var vcCustom = false, vcMax = 0, vcGpr = '', vcMem = '';
+  var vcRegs = ['PC', 'IF/ID.PC', 'ID/EX.PC', 'EX/MEM.PC', 'MEM/WB.PC', 'ID/EX.A', 'ID/EX.B', 'EX/MEM.ALUOut', 'MEM/WB.Result'];
   var tab = 'code';
 
   // パイプラインレジスタ（名前は Patterson & Hennessy の表記に合わせる）: [名前, 値, 説明]
@@ -2441,13 +2527,25 @@ var MipsSimulator = (function () {
       if (typeof o.adr === 'number') adr = (o.adr & ~3) >>> 0;
       dispAsm = !!o.dispAsm;
       if (o.obsView === 'diagram' || o.obsView === 'values') obsView = o.obsView;
+      if (o.pipeView === 'diagram' || o.pipeView === 'list') pipeView = o.pipeView;
+      if (o.vcCols === 'all' || o.vcCols === 'point') vcCols = o.vcCols;
+      if (o.obsView === 'table') { obsView = 'values'; vcCols = 'point'; }   // 以前の「観測表」は値の変化に統合した
+      if (typeof o.otPoint === 'number') otPoint = o.otPoint;
+      if (/^(IF|ID|EX|MEM|WB)$/.test(o.otStage)) otStage = o.otStage;
+      vcCustom = !!o.vcCustom;
+      if (typeof o.vcMax === 'number') vcMax = o.vcMax;
+      if (typeof o.vcGpr === 'string') vcGpr = o.vcGpr;
+      if (typeof o.vcMem === 'string') vcMem = o.vcMem;
+      if (Array.isArray(o.vcRegs)) vcRegs = o.vcRegs.filter(function (n) { return IREGS.some(function (r) { return r[0] === n; }); });
       return true;
     } catch (e) { return false; }
   }
   function saveSim() {
     try {
       localStorage.setItem(SIM_KEY, JSON.stringify({
-        mode: simMode, delaySlot: delaySlot, loadUse: loadUse, regs: initRegs, mem: $('memInit').value, tab: tab, adr: adr, dispAsm: dispAsm, obsView: obsView
+        mode: simMode, delaySlot: delaySlot, loadUse: loadUse, regs: initRegs, mem: $('memInit').value, tab: tab, adr: adr, dispAsm: dispAsm, obsView: obsView, pipeView: pipeView,
+        vcCols: vcCols, otPoint: otPoint, otStage: otStage,
+        vcCustom: vcCustom, vcMax: vcMax, vcGpr: vcGpr, vcMem: vcMem, vcRegs: vcRegs
       }));
     } catch (e) { /* ignore */ }
   }
@@ -2611,31 +2709,178 @@ var MipsSimulator = (function () {
       : '<tr><td style="color:var(--muted);font-family:inherit;white-space:normal">なし（.data・初期値の入力・ストア命令で書き込まれると表示されます）</td></tr>';
   }
 
+  // ---- パイプラインの内部構造図（SVG） ----
+  // 各クロックの終わりの状態を描く。pipe.if〜wb は「そのクロックに IF〜WB で処理した命令」、
+  // パイプラインレジスタ（IF/ID〜MEM/WB）は「そのクロックの終わりにラッチした値」
+  var DP_COL = [0, 150, 400, 620, 790, 920];   // 列の境界（IF | ID | EX | MEM | WB）
+  var DP_LOADS = { LW: 1, LH: 1, LHU: 1, LB: 1, LBU: 1 };
+  var DP_STORES = { SW: 1, SH: 1, SB: 1 };
+
+  // ステージにある命令の見出し（命令と、バブル・破棄などのタグ）
+  function stageLabel(st, k) {
+    var L = st.pipe[k], tags = [];
+    var empty = st.cycle === 0 || (!L.valid && L.pc === 0 && !L.bubble);
+    var text = empty ? '（空）'
+      : L.bubble === 'stall' ? '（バブル）'
+      : L.bubble === 'flush' ? MipsSimulator.disasm(MipsSimulator.decode(L.ir), L.pc)
+      : MipsSimulator.disasm(L.d, L.pc);
+    if (L.bubble === 'stall') tags.push('ストール');
+    if (L.bubble === 'flush') tags.push('分岐成立で破棄');
+    if (!empty && !L.valid && !L.bubble) tags.push('プログラム外');
+    if (k === 'if' && st.stall) tags.push('ストール中（保持）');
+    if (!empty && L.slot) tags.push('遅延スロット');
+    return { text: text, tags: tags, empty: empty || !!L.bubble };
+  }
+
+  function clip(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+  function renderPipeDiagram(st, prev) {
+    var P = st.pipe, svg = [];
+    var on = function (c) { return c ? ' on' : ''; };
+    var dead = function (L) { return st.cycle === 0 || !!L.bubble || (!L.valid && L.pc === 0); };
+    // 線（矢印付き）。kind: '' | 'fw'（フォワーディング）| 'ctl'（制御、破線）
+    var wire = function (d, active, kind) {
+      var cls = 'dp-w' + (kind ? ' ' + kind : '') + on(active);
+      var m = active ? (kind === 'fw' ? 'url(#dpArrFw)' : 'url(#dpArrOn)') : 'url(#dpArr)';
+      svg.push('<path class="' + cls + '" d="' + d + '" marker-end="' + m + '"/>');
+    };
+    // パイプラインレジスタの箱（IREGS の名前から値と説明を引く）
+    var box = function (name, x, y, kind, faded, label) {
+      var r = iregRow(name), v = r[1](st), w = 106, hgt = 30;
+      var cls = 'dp-reg ' + kind + (prev && r[1](prev) !== v ? ' chg' : '') + (faded ? ' bub' : '');
+      svg.push('<g class="' + cls + '"><title>' + esc(name + '：' + r[2]) + '</title>' +
+        '<rect x="' + (x - w / 2) + '" y="' + y + '" width="' + w + '" height="' + hgt + '" rx="4"/>' +
+        '<text class="n" x="' + (x - w / 2 + 5) + '" y="' + (y + 11) + '">' + esc(label || name) + '</text>' +
+        '<text class="v" x="' + (x - w / 2 + 5) + '" y="' + (y + 25) + '">' + H(v) + '</text></g>');
+    };
+    var unit = function (inner, active, title) {
+      svg.push('<g class="dp-unit' + on(active) + '">' + (title ? '<title>' + esc(title) + '</title>' : '') + inner + '</g>');
+    };
+    var text = function (x, y, s, cls, anchor) {
+      svg.push('<text class="' + cls + '" x="' + x + '" y="' + y + '"' + (anchor ? ' text-anchor="' + anchor + '"' : '') + '>' + esc(s) + '</text>');
+    };
+
+    // 矢印の形
+    svg.push('<defs>' + [['dpArr', 'dp-arr'], ['dpArrOn', 'dp-arr on'], ['dpArrFw', 'dp-arr fw']].map(function (m) {
+      return '<marker id="' + m[0] + '" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+        '<path class="' + m[1] + '" d="M0,0 L8,4 L0,8 z"/></marker>';
+    }).join('') + '</defs>');
+
+    // 列の境界と見出し（ステージ名・命令・タグ）
+    for (var i = 1; i < 5; i++) svg.push('<line class="dp-col" x1="' + DP_COL[i] + '" y1="4" x2="' + DP_COL[i] + '" y2="482"/>');
+    STAGES.forEach(function (k, i) {
+      var cx = (DP_COL[i] + DP_COL[i + 1]) / 2, lab = stageLabel(st, k);
+      var chars = Math.floor((DP_COL[i + 1] - DP_COL[i] - 12) / 7.6);
+      text(cx, 14, k.toUpperCase(), 'dp-stage', 'middle');
+      text(cx, 29, clip(lab.text, chars), 'dp-ins' + (lab.empty ? ' emp' : ''), 'middle');
+      if (lab.tags.length) text(cx, 43, clip(lab.tags.join('・'), chars + 4), 'dp-tag', 'middle');
+    });
+
+    var fw = st.fwd || {};
+    var fwFrom = function (src) { return fw.rs === src || fw.rt === src; };
+    var ex = P.ex, mem = P.mem;
+    // このクロックに MEM ステージにあった命令は pipe.mem（MEM/WB にラッチされた命令）
+    var memMn = !dead(mem) && mem.d ? mem.d.mn : null;
+    var isLoad = !!(memMn && DP_LOADS[memMn]), isStore = !!(memMn && DP_STORES[memMn]);
+    // このクロックに EX にあったストア（書き込む値を EX/MEM.B にラッチした）
+    var exStore = !dead(ex) && ex.d && !!DP_STORES[ex.d.mn];
+    var wrote = st.changed.regs.slice();
+
+    // ---- 線 ----
+    wire('M65 150 V67 H96', false);                       // PC → IF/ID.PC
+    wire('M65 182 V228', false);                           // PC → 命令メモリ
+    wire('M115 252 H130 V103 H96', false);                // 命令メモリ → IF/ID.IR（命令）
+    wire('M153 163 H112', !!st.brCond, 'ctl');             // 分岐先 → PC
+    wire('M245 347 H280 V230 H288', false);                // レジスタファイル(rs) → 選択
+    wire('M245 377 H270 V290 H288', false);                // レジスタファイル(rt) → 選択
+    wire('M300 172 V218', fwFrom('EX') || fwFrom('MEM') || fwFrom('WB'), 'ctl');   // フォワーディング → 選択
+    wire('M318 172 V284 H312', fwFrom('EX') || fwFrom('MEM') || fwFrom('WB'), 'ctl');
+    wire('M310 230 H345', !!fw.rs);                        // 選択 → ID/EX.A
+    wire('M310 290 H345', !!fw.rt);                        // 選択 → ID/EX.B
+    wire('M453 230 H468', false);                          // A → ALU
+    wire('M456 230 V321 H468', false);                     // A → 乗除算器
+    wire('M453 290 H460 V255 H468', false);                // B → ALU
+    wire('M460 290 V357 H468', false);                     // B → 乗除算器
+    wire('M460 357 V415 H565', exStore);                   // B → EX/MEM.B（ストアする値）
+    wire('M520 240 H565', false);                          // ALU → EX/MEM.ALUOut
+    wire('M530 321 H565', false);                          // 乗除算器 → HI
+    wire('M530 357 H565', false);                          // 乗除算器 → LO
+    wire('M673 240 H680 V300 H688', isLoad || isStore);    // 番地 → データメモリ
+    wire('M673 415 H684 V360 H688', isStore);              // ストアする値 → データメモリ
+    wire('M673 240 H735', !isLoad && !isStore && !dead(mem)); // ALUOut → MEM/WB.Result（ロード以外）
+    wire('M770 300 H780 V257', isLoad);                    // データメモリ → MEM/WB.Result（ロード）
+    wire('M843 240 H880 V472 H205 V452', wrote.length > 0); // 書き戻し → レジスタファイル
+    // フォワーディングの経路（ID へ）
+    wire('M620 225 V140 H345 V146', fwFrom('EX'), 'fw');    // EX の結果（EX/MEM.ALUOut）
+    wire('M790 225 V133 H332 V146', fwFrom('MEM'), 'fw');   // MEM の結果（MEM/WB.Result）
+    wire('M880 240 V126 H319 V146', fwFrom('WB'), 'fw');    // WB で書き戻す値
+
+    // ---- 部品 ----
+    unit('<rect x="20" y="150" width="90" height="32" rx="4"/><text x="65" y="171" text-anchor="middle">PC</text>' +
+      '<text class="s" x="65" y="196" text-anchor="middle">' + H(st.pc) + '</text>', false, '次にフェッチする番地');
+    unit('<rect x="15" y="228" width="100" height="64" rx="4"/><text x="65" y="256" text-anchor="middle">命令</text>' +
+      '<text x="65" y="272" text-anchor="middle">メモリ</text>', false);
+    box('Branch.Target', 206, 148, 'pc', !st.brCond, '分岐先');
+    unit('<rect x="262" y="146" width="100" height="26" rx="4"/><text x="312" y="163" text-anchor="middle">フォワーディング</text>',
+      fwFrom('EX') || fwFrom('MEM') || fwFrom('WB'), 'EX・MEM・WB の結果を ID へ回す');
+    unit('<circle cx="300" cy="230" r="10"/>', !!fw.rs, 'rs の値を選ぶ（レジスタファイル / フォワーディング）');
+    unit('<circle cx="300" cy="290" r="10"/>', !!fw.rt, 'rt の値を選ぶ（レジスタファイル / フォワーディング）');
+    var rd = '';
+    if (!dead(P.id) && P.id.d && P.id.d.mn && !P.id.d.nop) {
+      var d = P.id.d, sys = d.mn === 'SYSCALL';
+      rd = 'rs $' + (sys ? 2 : d.rs) + ' rt $' + (sys ? 4 : d.rt);
+    }
+    unit('<rect x="165" y="330" width="80" height="122" rx="4"/><text x="205" y="360" text-anchor="middle">レジスタ</text>' +
+      '<text x="205" y="376" text-anchor="middle">ファイル</text><text class="s" x="205" y="396" text-anchor="middle">$0〜$31</text>' +
+      (rd ? '<text class="s" x="205" y="420" text-anchor="middle">' + esc(rd.split(' rt')[0]) + '</text>' +
+        '<text class="s" x="205" y="434" text-anchor="middle">' + esc('rt' + rd.split(' rt')[1]) + '</text>' : ''), wrote.length > 0);
+    unit('<path d="M468 205 L520 222 L520 258 L468 275 L468 248 L478 240 L468 232 Z"/><text x="497" y="244" text-anchor="middle">ALU</text>', false);
+    unit('<rect x="468" y="310" width="62" height="58" rx="4"/><text x="499" y="335" text-anchor="middle">乗除算</text>' +
+      '<text class="s" x="499" y="352" text-anchor="middle">MULT/DIV</text>', false, 'MULT・DIV の結果を HI・LO へ');
+    unit('<rect x="688" y="280" width="82" height="100" rx="4"/><text x="729" y="325" text-anchor="middle">データ</text>' +
+      '<text x="729" y="341" text-anchor="middle">メモリ</text>', isLoad || isStore);
+
+    // パイプラインレジスタ
+    var fIf = dead(P.if) && !st.stall, fId = dead(P.id), fEx = dead(ex), fMem = dead(mem);
+    box('IF/ID.PC', 150, 52, 'pc', fIf); box('IF/ID.IR', 150, 88, 'ir', fIf);
+    box('ID/EX.PC', 400, 52, 'pc', fId); box('ID/EX.IR', 400, 88, 'ir', fId);
+    box('ID/EX.A', 400, 215, 'dat', fId); box('ID/EX.B', 400, 275, 'dat', fId);
+    box('EX/MEM.PC', 620, 52, 'pc', fEx); box('EX/MEM.IR', 620, 88, 'ir', fEx);
+    box('EX/MEM.ALUOut', 620, 225, 'dat', fEx); box('EX/MEM.B', 620, 400, 'dat', fEx);
+    box('HI', 620, 306, 'dat', false); box('LO', 620, 342, 'dat', false);
+    box('MEM/WB.PC', 790, 52, 'pc', fMem); box('MEM/WB.IR', 790, 88, 'ir', fMem);
+    box('MEM/WB.Result', 790, 225, 'dat', fMem);
+
+    // ---- 今のクロックの出来事 ----
+    if (fw.rs) text(330, 204, 'rs ← ' + fw.rs, 'dp-note fw');
+    if (fw.rt) text(330, 318, 'rt ← ' + fw.rt, 'dp-note fw');
+    if (st.brCond) text(160, 200, '分岐成立 → ' + H(st.brAddr), 'dp-note');
+    if (wrote.length) text(500, 465, wrote.map(function (n) { return '$' + n + ' ← ' + H(st.regs[n]); }).join('  '), 'dp-note', 'middle');
+    // ストアの番地は MEM/WB に残る ALU の結果、ロードの番地は前のクロックの EX/MEM.ALUOut
+    if (isStore) {
+      var wa = st.changed.mem[0];
+      text(729, 396, 'M[' + H(mem.c) + '] ← ' + (wa !== undefined ? H(st.mem.get(wa)) : ''), 'dp-note', 'middle');
+    } else if (isLoad) {
+      text(729, 396, (prev ? 'M[' + H(prev.pipe.ex.c) + ']' : 'M') + ' → ' + H(mem.c), 'dp-note', 'middle');
+    }
+    if (st.stall) text(150, 136, '保持', 'dp-tag', 'middle');
+
+    $('pipeDiagram').innerHTML = '<svg viewBox="0 0 920 486" role="img" aria-label="パイプラインの内部構造">' + svg.join('') + '</svg>';
+  }
+
   function renderPipe(st, prev) {
     $('pipeOff').hidden = simMode === 'pipe';
     $('pipeOn').hidden = simMode !== 'pipe';
     if (simMode !== 'pipe') return;
-    var P = st.pipe;
-    $('pipeStages').innerHTML = STAGES.map(function (k) {
-      var L = P[k], tags = '';
-      var empty = st.cycle === 0 || (!L.valid && L.pc === 0 && !L.bubble);
-      var body = empty ? '（空）'
-        : L.bubble === 'stall' ? '（バブル）'
-        : L.bubble === 'flush' ? '（フラッシュ）' + esc(MipsSimulator.disasm(MipsSimulator.decode(L.ir), L.pc))
-        : esc(MipsSimulator.disasm(L.d, L.pc));
-      if (L.bubble === 'stall') tags += '<span class="tag">ストール</span>';
-      if (L.bubble === 'flush') tags += '<span class="tag">分岐成立で破棄</span>';
-      if (!empty && !L.valid && !L.bubble) tags += '<span class="tag">プログラム外</span>';
-      if (k === 'if' && st.stall) tags += '<span class="tag">ストール中（保持）</span>';
-      if (!empty && L.slot) tags += '<span class="tag">遅延スロット</span>';
-      if (k === 'id' && !empty) {
-        if (st.fwd.rs) tags += '<span class="tag fwd">rs ← ' + st.fwd.rs + '</span>';
-        if (st.fwd.rt) tags += '<span class="tag fwd">rt ← ' + st.fwd.rt + '</span>';
-        if (st.brCond) tags += '<span class="tag fwd">分岐成立 → ' + H(st.brAddr) + '</span>';
-      }
-      return '<div class="stage' + (empty ? ' empty' : '') + '"><div class="sn">' + k.toUpperCase() + '</div>' +
-        '<div class="si">' + body + '</div>' + tags + '</div>';
-    }).join('');
+    [].forEach.call($('pipeView').querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-v') === pipeView);
+    });
+    $('pipeDiagram').hidden = pipeView !== 'diagram';
+    $('iregs').hidden = pipeView !== 'list';
+    $('pipeSub').textContent = pipeView === 'diagram'
+      ? 'ステージ境界の箱 = パイプラインレジスタ（このクロックの終わりの値）'
+      : 'パイプラインレジスタの値（オレンジ = 前のクロックから変わった値）';
+    if (pipeView === 'diagram') renderPipeDiagram(st, prev);
     $('iregs').innerHTML = IREGS.map(function (r) {
       var v = r[1](st), cls = [];
       if (prev && r[1](prev) !== v) cls.push('changed');
@@ -2647,7 +2892,80 @@ var MipsSimulator = (function () {
       '。分岐は ID で判定。メモリはビッグエンディアン。';
   }
 
+  // 「$10 $t0」→ レジスタ番号の列。読めないものは bad に入れる
+  function parseGprList(text) {
+    var out = [], bad = [];
+    String(text).split(/[\s,]+/).filter(Boolean).forEach(function (tok) {
+      var n = parseRegToken(tok.charAt(0) === '$' ? tok : '$' + tok);
+      if (n === null) bad.push(tok); else if (out.indexOf(n) < 0) out.push(n);
+    });
+    return { list: out, bad: bad };
+  }
+  // 「C0000008 0x10010000」→ ワードの番地の列
+  function parseMemList(text) {
+    var out = [], bad = [];
+    String(text).split(/[\s,]+/).filter(Boolean).forEach(function (tok) {
+      var a = parseHex32(tok);
+      if (a === null) bad.push(tok); else { a = (a & ~3) >>> 0; if (out.indexOf(a) < 0) out.push(a); }
+    });
+    return { list: out, bad: bad };
+  }
+
+  // 行を選ぶとき: パイプラインレジスタ（パイプラインのみ）→ 汎用レジスタ → メモリ の順
+  // 観測表としての並び順: 各ステージの PC → 命令 → データ → HI/LO → 分岐
+  var VC_ORDER = ['PC', 'IF/ID.PC', 'ID/EX.PC', 'EX/MEM.PC', 'MEM/WB.PC', 'IF/ID.IR', 'ID/EX.IR', 'EX/MEM.IR', 'MEM/WB.IR',
+    'ID/EX.A', 'ID/EX.B', 'EX/MEM.ALUOut', 'EX/MEM.B', 'MEM/WB.Result', 'HI', 'LO', 'Branch.Taken', 'Branch.Target'];
+  function customRows() {
+    var rows = simMode === 'pipe'
+      ? VC_ORDER.filter(function (n) { return vcRegs.indexOf(n) >= 0; }).map(iregRow)
+      : [['PC', function (s) { return s.pc; }]];
+    var g = parseGprList(vcGpr), m = parseMemList(vcMem);
+    g.list.forEach(function (n) { rows.push(['$' + n, function (s) { return s.regs[n]; }]); });
+    m.list.forEach(function (a) { rows.push(['M[' + H(a) + ']', function (s) { return (s.mem.get(a) || 0) >>> 0; }]); });
+    $('vcErr').textContent = g.bad.concat(m.bad).length ? '読み取れない指定: ' + g.bad.concat(m.bad).join(' ') : '';
+    return rows;
+  }
+
+  // 値の変化の列: [{ s: 状態, head: 見出し, sub: 補足 }]
+  //   all   … 初期値と各クロック（vcMax があればそのクロックまで。画面には直近 300 列）
+  //   point … 観測点を通るたびに 1 列（1回目、2回目…）
+  function valueCols(hist, forCopy) {
+    if (vcCols === 'point') {
+      var unit = simMode === 'pipe' ? 'クロック ' : '命令 ';
+      return pointCols(hist).map(function (c, i) { return { s: c.s, head: (i + 1) + '回目', sub: unit + c.k }; });
+    }
+    var cols = vcMax > 0 ? hist.filter(function (s) { return s.cycle <= vcMax; }) : hist;
+    if (!forCopy) cols = cols.slice(Math.max(0, cols.length - 300));
+    return cols.map(function (s) { return { s: s, head: colName(s), sub: '' }; });
+  }
+
+  // 観測点を通ったときの状態の一覧（N回目の順）
+  //   パイプライン … 観測点の命令が otStage にあったクロック（ストール中の ID・破棄した命令は数えない）
+  //   逐次         … 観測点の命令を実行した直後
+  function pointCols(hist) {
+    var cols = [];
+    if (simMode !== 'pipe') {
+      var seen = {};
+      hist.forEach(function (s) {
+        if (s.cycle > 0 && !s.edited && !seen[s.cycle] && s.lastPc === otPoint) { seen[s.cycle] = 1; cols.push({ k: s.cycle, s: s }); }
+      });
+      return cols;
+    }
+    var data = diagramData(hist);
+    data.rows.forEach(function (r) {
+      if (r.pc !== otPoint || r.flushed) return;
+      var k = null;
+      Object.keys(r.cells).forEach(function (c) {
+        var cell = r.cells[c];
+        if (cell.st === otStage && !cell.stall && !cell.flush) k = Number(c);
+      });
+      if (k !== null && data.states[k]) cols.push({ k: k, s: data.states[k] });
+    });
+    return cols;
+  }
+
   function obsRows(hist) {
+    if (vcCustom) return customRows();
     var rows;
     if (simMode === 'pipe') {
       rows = OBS_PIPE.slice();
@@ -2681,7 +2999,7 @@ var MipsSimulator = (function () {
   // パイプライン図のデータ: 各クロックで、各命令（フェッチの通し番号ごと）がどのステージにいたか
   // 各クロックの状態の pipe.if〜wb は「そのクロックに IF〜WB で処理した命令」を表す
   function diagramData(hist) {
-    var rows = new Map(), cols = [], prev = null;
+    var rows = new Map(), cols = [], states = {}, prev = null;
     hist.forEach(function (s) {
       var P = s.pipe;
       var same = prev && P.if === prev.pipe.if && P.id === prev.pipe.id && P.ex === prev.pipe.ex && P.mem === prev.pipe.mem && P.wb === prev.pipe.wb;
@@ -2690,6 +3008,7 @@ var MipsSimulator = (function () {
       if (skip) return;
       var k = s.cycle;
       cols.push(k);
+      states[k] = s;
       var put = function (L, stage, extra) {
         if (!L.seq || L.bubble === 'stall') return;
         if (!L.valid && !L.bubble) return;   // プログラムの外（終端の空フェッチ）
@@ -2706,7 +3025,7 @@ var MipsSimulator = (function () {
       put(P.mem, 'MEM');
       put(P.wb, 'WB');
     });
-    return { rows: Array.from(rows.values()).sort(function (a, b) { return a.seq - b.seq; }), cols: cols };
+    return { rows: Array.from(rows.values()).sort(function (a, b) { return a.seq - b.seq; }), cols: cols, states: states };
   }
 
   function cellText(c) {
@@ -2753,25 +3072,76 @@ var MipsSimulator = (function () {
     wrap.scrollLeft = wrap.scrollWidth;
   }
 
+  function syncValueCtl() {
+    $('vcCols').value = vcCols;
+    $('vcMaxWrap').hidden = vcCols !== 'all';
+    $('vcMaxLabel').textContent = simMode === 'pipe' ? 'クロック' : '命令';
+    $('vcPointWrap').hidden = vcCols !== 'point';
+    $('vcStageWrap').hidden = vcCols !== 'point' || simMode !== 'pipe';
+    if (vcCols === 'point') syncObsPoints();
+    $('vcCustom').checked = vcCustom;
+    if (document.activeElement !== $('vcMax')) $('vcMax').value = vcMax > 0 ? String(vcMax) : '';
+    if (document.activeElement !== $('vcGpr')) $('vcGpr').value = vcGpr;
+    if (document.activeElement !== $('vcMem')) $('vcMem').value = vcMem;
+    $('vcPick').hidden = !vcCustom;
+    $('vcRegs').hidden = simMode !== 'pipe';
+    if (!$('vcRegs').childNodes.length) {
+      $('vcRegs').innerHTML = IREGS.map(function (r) {
+        return '<label class="ot-chip" title="' + esc(r[2]) + '"><input type="checkbox" value="' + esc(r[0]) + '"> ' + esc(r[0]) + '</label>';
+      }).join('');
+    }
+    [].forEach.call($('vcRegs').querySelectorAll('input'), function (c) { c.checked = vcRegs.indexOf(c.value) >= 0; });
+  }
+
   function renderValues() {
+    syncValueCtl();
     var hist = machine.history;
-    var cols = hist.slice(Math.max(0, hist.length - 300));
+    var cols = valueCols(hist);
     var rows = obsRows(hist);
-    var h = '<table class="obs"><thead><tr><th>レジスタ</th>' + cols.map(function (s) { return '<th>' + colName(s) + '</th>'; }).join('') + '</tr></thead><tbody>';
+    var wrap = $('obsWrap');
+    if (vcCols === 'point' && !cols.length) {
+      var pw = last.words.filter(function (w) { return w.address === otPoint; })[0];
+      var where = '観測点（' + H(otPoint) + ' ' + esc(pw ? pw.asm : '') + '）';
+      wrap.innerHTML = '<div class="pd-note">' + (simMode === 'pipe' ? where + 'が ' + otStage + ' にあるクロックはまだありません。' : where + 'はまだ実行されていません。') +
+        'ステップや実行で進めると、通るたびに 1 列ずつ記録されます。</div>';
+      return;
+    }
+    var h = '<table class="obs"><thead><tr><th>レジスタ</th>' + cols.map(function (c) {
+      return '<th>' + esc(c.head) + (c.sub ? '<small>' + esc(c.sub) + '</small>' : '') + '</th>';
+    }).join('') + '</tr></thead><tbody>';
     rows.forEach(function (r) {
-      h += '<tr><td>' + esc(r[0]) + '</td>';
-      cols.forEach(function (s, i) {
-        var v = r[1](s), cls = [];
-        if (i > 0 && r[1](cols[i - 1]) !== v) cls.push('diff');
+      h += '<tr><td' + (r[2] ? ' title="' + esc(r[2]) + '"' : '') + '>' + esc(r[0]) + '</td>';
+      cols.forEach(function (c, i) {
+        var v = r[1](c.s), cls = [];
+        if (i > 0 && r[1](cols[i - 1].s) !== v) cls.push('diff');
         if (i === cols.length - 1) cls.push('last');
         h += '<td' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' + H(v) + '</td>';
       });
       h += '</tr>';
     });
     h += '</tbody></table>';
-    var wrap = $('obsWrap');
     wrap.innerHTML = h;
     wrap.scrollLeft = wrap.scrollWidth;
+  }
+
+  // ---- 観測点 ----
+  // 観測点の選択肢（命令の番地）を作り直す。観測点がプログラムにないときは先頭の命令にする
+  var otPointKey = '';
+  function syncObsPoints() {
+    var words = last ? last.words : [];
+    if (!words.some(function (w) { return w.address === otPoint; })) otPoint = words.length ? words[0].address : null;
+    var labelAt = {};
+    (last ? last.labels : []).forEach(function (l) { (labelAt[l.address] = labelAt[l.address] || []).push(l.name); });
+    var key = words.map(function (w) { return w.address + w.hex; }).join() + '|' + Object.keys(labelAt).join();
+    if (key !== otPointKey) {
+      otPointKey = key;
+      $('otPoint').innerHTML = words.map(function (w) {
+        var lab = labelAt[w.address] ? labelAt[w.address].join(': ') + ': ' : '';
+        return '<option value="' + w.address + '">' + H(w.address) + '  ' + esc(lab + w.asm) + '</option>';
+      }).join('');
+    }
+    if (otPoint !== null) $('otPoint').value = String(otPoint);
+    $('otStage').value = otStage;
   }
 
   // 逐次モードではパイプライン図はないので、値の変化を表示する
@@ -2783,12 +3153,16 @@ var MipsSimulator = (function () {
       var v = b.getAttribute('data-v');
       b.classList.toggle('on', v === view);
       if (v === 'diagram') {
+        if (!b.dataset.tip) b.dataset.tip = b.title;
         b.disabled = simMode !== 'pipe';
-        b.title = simMode === 'pipe' ? '命令ごとに、各クロックでどのステージにいたかを表示' : 'パイプラインのときに使えます';
+        b.title = simMode === 'pipe' ? b.dataset.tip : 'パイプラインのときに使えます';
       }
     });
-    $('obsAllWrap').hidden = !(simMode === 'pipe' && view === 'values');
-    $('obsSub').textContent = view === 'diagram' ? '行 = 命令、列 = クロック' : '行 = レジスタ、列 = 初期値・各' + (simMode === 'pipe' ? 'クロック' : '命令');
+    $('obsAllWrap').hidden = !(simMode === 'pipe' && view === 'values' && !vcCustom);
+    $('vcCtl').hidden = view !== 'values';
+    $('obsSub').textContent = view === 'diagram' ? '行 = 命令、列 = クロック'
+      : vcCols === 'point' ? '行 = レジスタ、列 = 観測点を通った回（そのときの値）'
+      : '行 = レジスタ、列 = 初期値・各' + (simMode === 'pipe' ? 'クロック' : '命令');
     if (view === 'diagram') renderDiagram(); else renderValues();
   }
 
@@ -2801,10 +3175,10 @@ var MipsSimulator = (function () {
         lines.push([H(r.pc) + ' ' + insText(r)].concat(data.cols.map(function (k) { return r.cells[k] ? cellText(r.cells[k]) : ''; })).join('\t'));
       });
     } else {
-      var rows = obsRows(hist);
-      lines = [['レジスタ'].concat(hist.map(colName)).join('\t')];
+      var rows = obsRows(hist), vcols = valueCols(hist, true);
+      lines = [['レジスタ'].concat(vcols.map(function (c) { return c.head + (c.sub ? '（' + c.sub + '）' : ''); })).join('\t')];
       rows.forEach(function (r) {
-        lines.push([r[0]].concat(hist.map(function (s) { return H(r[1](s)); })).join('\t'));
+        lines.push([r[0]].concat(vcols.map(function (c) { return H(r[1](c.s)); })).join('\t'));
       });
     }
     return lines.join('\n') + '\n';
@@ -3440,6 +3814,13 @@ var MipsSimulator = (function () {
     if (b) setMode(b.getAttribute('data-mode'));
   });
   $('toPipe').addEventListener('click', function () { setMode('pipe'); });
+  $('pipeView').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    pipeView = b.getAttribute('data-v');
+    saveSim();
+    renderSim();
+  });
   $('optDelaySlot').addEventListener('change', function (e) { setExecOption('delaySlot', e.target.checked); });
   $('optLoadUse').addEventListener('change', function (e) { setExecOption('loadUse', e.target.value); });
   // 設定のポップオーバー: 外側のクリックと Esc で閉じる
@@ -3520,6 +3901,29 @@ var MipsSimulator = (function () {
     if (machine) renderObs();
   });
   $('obsAll').addEventListener('change', function () { if (machine) renderObs(); });
+  $('vcCustom').addEventListener('change', function (e) { vcCustom = e.target.checked; saveSim(); if (machine) renderObs(); });
+  $('vcMax').addEventListener('input', function (e) {
+    var n = parseInt(e.target.value, 10);
+    vcMax = n > 0 ? n : 0;
+    saveSim();
+    if (machine) renderObs();
+  });
+  ['vcGpr', 'vcMem'].forEach(function (id) {
+    $(id).addEventListener('input', function (e) {
+      if (id === 'vcGpr') vcGpr = e.target.value; else vcMem = e.target.value;
+      saveSim();
+      if (machine) renderObs();
+    });
+  });
+  $('vcRegs').addEventListener('change', function () {
+    var on = [].map.call($('vcRegs').querySelectorAll('input:checked'), function (c) { return c.value; });
+    vcRegs = IREGS.map(function (r) { return r[0]; }).filter(function (n) { return on.indexOf(n) >= 0; });
+    saveSim();
+    if (machine) renderObs();
+  });
+  $('otPoint').addEventListener('change', function (e) { otPoint = parseInt(e.target.value, 10); saveSim(); if (machine) renderObs(); });
+  $('otStage').addEventListener('change', function (e) { otStage = e.target.value; saveSim(); if (machine) renderObs(); });
+  $('vcCols').addEventListener('change', function (e) { vcCols = e.target.value; saveSim(); if (machine) renderObs(); });
   $('obsCopy').addEventListener('click', function () { if (machine) copy(obsTsv()); });
 
   // 入力補助

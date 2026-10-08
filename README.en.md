@@ -5,13 +5,21 @@ English | [日本語](README.md)
 [![test](https://github.com/quwon-000/MIPS-pipeline-simulator/actions/workflows/test.yml/badge.svg)](https://github.com/quwon-000/MIPS-pipeline-simulator/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A MIPS assembler and simulator that runs entirely in the browser. It translates assembly into machine code (hex) and lets you step through both single-cycle execution and a 5-stage pipeline, clock by clock.
+A MIPS assembler and simulator that runs entirely in the browser. It is designed for learning computer architecture, especially pipelining: it translates assembly into machine code (hex) and lets you follow, clock by clock, how instructions flow through single-cycle execution and a 5-stage pipeline.
 
 **Demo: https://quwon-000.github.io/MIPS-pipeline-simulator/**
 
 > The user interface is in Japanese. Instruction names, registers, hex values and the pipeline diagram (IF / ID / EX / MEM / WB) are language-independent.
 
 ![Pipeline diagram](images/screenshot-pipeline.png)
+
+## Purpose and audience
+
+Pipeline hazards and forwarding are hard to follow from textbook figures alone. This tool aims to make them visible: you can see, clock by clock, how each instruction advances and which value is passed where, through diagrams and tables.
+
+- **Audience**: students learning computer architecture, and the people who teach it
+- **Priorities**: clarity of what happens, stepping forwards and backwards one step at a time, and correctness verified by tests
+- **Non-goals**: cycle-accurate modelling of real processors, or running large programs fast
 
 ## Features
 
@@ -28,8 +36,11 @@ A MIPS assembler and simulator that runs entirely in the browser. It translates 
   - Arithmetic overflow exceptions, `SYSCALL` (output / exit) and `BREAK`
 - **Visualization and debugging**
   - Pipeline diagram (instructions × clock cycles, showing stalls, flushed instructions and forwarding sources)
-  - Pipeline register values (`IF/ID.PC`, `ID/EX.A`, `EX/MEM.ALUOut`, ...)
+  - Value table: initial value and every clock cycle side by side, with selectable rows (pipeline registers, general-purpose registers, memory addresses) and a clock limit. Columns can also be switched to "each time a chosen instruction passes" (1st, 2nd, ... pass) to compare loop iterations. Copyable as TSV
+  - Datapath view: pipeline register values on the stage boundaries (`IF/ID.PC`, `ID/EX.A`, `EX/MEM.ALUOut`, ...) with the forwarding, branch, memory and write-back paths highlighted at every clock
   - Breakpoints, stepping backwards, and editing registers / memory during execution
+
+![Datapath view](images/screenshot-datapath.png)
 
 ![Machine code view](images/screenshot-main.png)
 
@@ -75,6 +86,21 @@ MAIN:   LA      $a0, MSG
 | Taken branch | Flush the already-fetched instruction (or delayed branch, configurable) |
 | Exceptions / exit | Older instructions complete, younger instructions are discarded |
 
+### Differences from the textbook 5-stage pipeline
+
+Pipeline register names follow the textbook notation (Patterson & Hennessy, *Computer Organization and Design*), but some details, such as where forwarding happens, differ from the textbook's standard design.
+
+| Item | This tool | Standard textbook design |
+|---|---|---|
+| Forwarding destination | **ID stage** (results from EX, MEM and WB are received in ID, so `ID/EX.A` and `ID/EX.B` hold the forwarded values) | Inputs of the EX stage (from EX/MEM and MEM/WB to the ALU) |
+| Branch on the result of the previous ALU instruction | **No stall** | 1-cycle stall (with branches resolved in ID) |
+| Branch on the result of the previous load | **1-cycle** stall | 2-cycle stall |
+| ALU instruction right after a load | 1-cycle stall | 1-cycle stall (same) |
+| MEM/WB | A single write-back value (`MEM/WB.Result`) | Read data and ALU result kept separately |
+| Exceptions | Execution stops | EPC is saved and control jumps to the exception handler |
+
+Forwarding into ID lets a branch compare against an EX result within the same cycle, which removes branch stalls. The trade-off is a longer combinational path in one cycle (ALU → select → compare), which would limit the clock frequency of real hardware. For readability, the datapath view omits the immediate / sign-extension path and the control signals.
+
 ## Tests
 
 ```sh
@@ -100,6 +126,8 @@ images/                    Images for the README
 ```
 
 ## Not supported
+
+The scope is limited to what is needed for learning, so the following are not supported:
 
 - Floating-point instructions (coprocessor 1) and exception handlers (execution stops on an exception)
 - Input `SYSCALL`s (5, 8, 12, ...)
